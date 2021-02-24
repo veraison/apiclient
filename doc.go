@@ -45,9 +45,11 @@ Then the Run method is invoked on the instantiated ChallengeReponseConfig
 object to trigger the protocol FSM, hiding any details about the synchronus /
 async nature of the underlying exchange:
 
-	err := cfg.Run()
+	attestationResult, mediaType, err := cfg.Run()
 	if err == nil {
 		fmt.Println("success!")
 	}
+
+On success, the Attestation Result, together with its media type, is returned.
 */
 package apiclient
