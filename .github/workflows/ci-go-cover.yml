@@ -29,5 +29,5 @@ jobs:
     - name: Go Coverage
       run: |
         go version
-        make test-cover | python scripts/cov.py
+        make test-cover | grep -o "coverage:.*of statements$" | python scripts/cov.py
       shell: bash
