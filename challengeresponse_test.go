@@ -12,21 +12,23 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var testNonce []byte = []byte{0xde, 0xad, 0xbe, 0xef}
+var testEvidence []byte = []byte{0x0e, 0x0d, 0x0e}
 
-func userCallBackOK(nonce []byte, accept []string) ([]byte, string, error) {
-	return testNonce, "application/my-evidence-media-type", nil
+func userCallBackOK(nonce []byte, accept []string) (evidence []byte, mediaType string, err error) {
+	return testEvidence, "application/my-evidence-media-type", nil
 }
 
 // newTestingHTTPClient creates an HTTP test server (with a configurable request
 // handler), an API Client and connects them together.  The API client and the
 // server's shutdown switch are returned.
-func newTestingHTTPClient(handler http.Handler) (*Client, func()) {
+func newTestingHTTPClient(handler http.Handler) (cli *Client, closerFn func()) {
 	srv := httptest.NewServer(handler)
 
-	cli := &Client{
+	cli = &Client{
 		HTTPClient: http.Client{
 			Transport: &http.Transport{
 				DialContext: func(_ context.Context, network, _ string) (net.Conn, error) {
@@ -36,7 +38,9 @@ func newTestingHTTPClient(handler http.Handler) (*Client, func()) {
 		},
 	}
 
-	return cli, srv.Close
+	closerFn = srv.Close
+
+	return
 }
 
 func TestChallengeResponseConfig_newSession_ok(t *testing.T) {
@@ -68,7 +72,8 @@ func TestChallengeResponseConfig_newSession_ok(t *testing.T) {
 
 		w.Header().Set("Location", expectedSessionURI)
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(newSessionCreatedBody))
+		_, e := w.Write([]byte(newSessionCreatedBody))
+		require.Nil(t, e)
 	})
 
 	client, teardown := newTestingHTTPClient(h)
@@ -164,7 +169,8 @@ func TestChallengeResponseConfig_challengeResponse_sync_ok(t *testing.T) {
 		assert.Equal(t, evidence, reqBody)
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(sessionBody))
+		_, e := w.Write([]byte(sessionBody))
+		require.Nil(t, e)
 	})
 
 	client, teardown := newTestingHTTPClient(h)
@@ -177,7 +183,7 @@ func TestChallengeResponseConfig_challengeResponse_sync_ok(t *testing.T) {
 	actualResult, err := cfg.challengeResponse(evidence, mediaType, sessionURI)
 
 	assert.Nil(t, err)
-	assert.JSONEq(t, string(expectedResult), string(actualResult))
+	assert.JSONEq(t, expectedResult, string(actualResult))
 }
 
 func TestChallengeResponseConfig_deleteSession_ok(t *testing.T) {
@@ -226,7 +232,8 @@ func TestChallengeResponseConfig_pollForAttestationResult_ok(t *testing.T) {
 		assert.Equal(t, http.MethodGet, r.Method)
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(sessionBody))
+		_, e := w.Write([]byte(sessionBody))
+		require.Nil(t, e)
 	})
 
 	client, teardown := newTestingHTTPClient(h)
@@ -241,7 +248,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_ok(t *testing.T) {
 	actualResult, err := cfg.pollForAttestationResult(sessionURI)
 
 	assert.Nil(t, err)
-	assert.JSONEq(t, string(expectedResult), string(actualResult))
+	assert.JSONEq(t, expectedResult, string(actualResult))
 }
 
 func TestChallengeResponseConfig_pollForAttestationResult_failed_state(t *testing.T) {
@@ -265,7 +272,8 @@ func TestChallengeResponseConfig_pollForAttestationResult_failed_state(t *testin
 		assert.Equal(t, http.MethodGet, r.Method)
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(sessionBody))
+		_, e := w.Write([]byte(sessionBody))
+		require.Nil(t, e)
 	})
 
 	client, teardown := newTestingHTTPClient(h)
@@ -301,7 +309,8 @@ func TestChallengeResponseConfig_pollForAttestationResult_unexpected_state(t *te
 		assert.Equal(t, http.MethodGet, r.Method)
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(sessionBody))
+		_, e := w.Write([]byte(sessionBody))
+		require.Nil(t, e)
 	})
 
 	client, teardown := newTestingHTTPClient(h)
@@ -338,7 +347,8 @@ func TestChallengeResponseConfig_pollForAttestationResult_exhaustion(t *testing.
 		assert.Equal(t, http.MethodGet, r.Method)
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(sessionBody))
+		_, e := w.Write([]byte(sessionBody))
+		require.Nil(t, e)
 	})
 
 	client, teardown := newTestingHTTPClient(h)

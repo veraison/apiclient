@@ -76,7 +76,7 @@ func (cfg ChallengeResponseConfig) Run() ([]byte, error) {
 
 	// if requested, explicitly call DELETE on the session resource
 	if cfg.DeleteSession {
-		if err := cfg.deleteSession(sessionURI); err != nil {
+		if err = cfg.deleteSession(sessionURI); err != nil {
 			log.Printf("DELETE %s failed: %v", sessionURI, err)
 		}
 	}
