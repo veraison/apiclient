@@ -29,27 +29,43 @@ and either an explicit nonce:
 
 	cfg := ChallengeResponseConfig{
 		Nonce:         []byte{0xde, 0xad, 0xbe, 0xef},
-		Callback:       MyChallengeResponseCallback,
-		NewSessionURI: "https://veraison.example/challenge-response/v1/newSession",
+		UserCallback:  MyChallengeResponseCallback,
+		NewSessionURI: "http://veraison.example/challenge-response/v1/newSession",
 	}
 
 or just the size of a nonce to be provided by the server side:
 
 	cfg := ChallengeResponseConfig{
 		NonceSz:        32,
-		Callback:       MyChallengeResponseCallback,
-		NewSessionURI: "https://veraison.example/challenge-response/v1/newSession",
+		UserCallback:   MyChallengeResponseCallback,
+		NewSessionURI: "http://veraison.example/challenge-response/v1/newSession",
 	}
+
+The user can also supply a custom Client object, for example to appropriately
+configure the underlying TLS transport:
+
+    cfg.Client = &Client{
+		HTTPClient: http.Client{
+			Transport: myTLSConfig,
+		}
+	}
+
+The user can also request to explicitly delete the session resource at the
+server instead of letting it expire:
+
+    cfg.DeleteSession = true
 
 Then the Run method is invoked on the instantiated ChallengeReponseConfig
 object to trigger the protocol FSM, hiding any details about the synchronus /
 async nature of the underlying exchange:
 
-	attestationResult, mediaType, err := cfg.Run()
+	attestationResult, err := cfg.Run()
+
+On success, the Attestation Result, is returned as a JSON string:
+
 	if err == nil {
-		fmt.Println("success!")
+		fmt.Println("%s", string(attestationResult))
 	}
 
-On success, the Attestation Result, together with its media type, is returned.
 */
 package apiclient
