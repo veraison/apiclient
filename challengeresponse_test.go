@@ -18,7 +18,12 @@ import (
 var testNonce []byte = []byte{0xde, 0xad, 0xbe, 0xef}
 var testEvidence []byte = []byte{0x0e, 0x0d, 0x0e}
 
-func userCallBackOK(nonce []byte, accept []string) (evidence []byte, mediaType string, err error) {
+type testEvidenceBuilder struct{}
+
+func (testEvidenceBuilder) BuildEvidence(
+	nonce []byte,
+	accept []string,
+) (evidence []byte, mediaType string, err error) {
 	return testEvidence, "application/my-evidence-media-type", nil
 }
 
@@ -80,10 +85,10 @@ func TestChallengeResponseConfig_newSession_ok(t *testing.T) {
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
-		Nonce:         []byte{0xde, 0xad, 0xbe, 0xef},
-		UserCallback:  userCallBackOK,
-		NewSessionURI: "http://veraison.example/challenge-response/v1/newSession",
-		Client:        client,
+		Nonce:           []byte{0xde, 0xad, 0xbe, 0xef},
+		EvidenceBuilder: testEvidenceBuilder{},
+		NewSessionURI:   "http://veraison.example/challenge-response/v1/newSession",
+		Client:          client,
 	}
 
 	actualBody, actualSessionURI, err := cfg.newSession()
@@ -145,8 +150,8 @@ func TestChallengeResponseConfig_newSession_relative_location_ok(t *testing.T) {
 
 func TestChallengeResponseConfig_check_nonce_at_least_one(t *testing.T) {
 	cfg := ChallengeResponseConfig{
-		UserCallback:  userCallBackOK,
-		NewSessionURI: "https://veraison.example/challenge-response/v1/newSession",
+		EvidenceBuilder: testEvidenceBuilder{},
+		NewSessionURI:   "https://veraison.example/challenge-response/v1/newSession",
 	}
 
 	err := cfg.check()
@@ -155,30 +160,30 @@ func TestChallengeResponseConfig_check_nonce_at_least_one(t *testing.T) {
 
 func TestChallengeResponseConfig_check_nonce_at_most_one(t *testing.T) {
 	cfg := ChallengeResponseConfig{
-		Nonce:         []byte{0xde, 0xad, 0xbe, 0xef},
-		NonceSz:       32,
-		UserCallback:  userCallBackOK,
-		NewSessionURI: "https://veraison.example/challenge-response/v1/newSession",
+		Nonce:           []byte{0xde, 0xad, 0xbe, 0xef},
+		NonceSz:         32,
+		EvidenceBuilder: testEvidenceBuilder{},
+		NewSessionURI:   "https://veraison.example/challenge-response/v1/newSession",
 	}
 
 	err := cfg.check()
 	assert.Error(t, err, "bad configuration: only one of nonce or nonce size must be specified")
 }
 
-func TestChallengeResponseConfig_check_callback(t *testing.T) {
+func TestChallengeResponseConfig_check_evidence_builder(t *testing.T) {
 	cfg := ChallengeResponseConfig{
 		Nonce:         []byte{0xde, 0xad, 0xbe, 0xef},
 		NewSessionURI: "https://veraison.example/challenge-response/v1/newSession",
 	}
 
 	err := cfg.check()
-	assert.Error(t, err, "bad configuration: missing callback")
+	assert.Error(t, err, "bad configuration: the evidence builder is missing")
 }
 
 func TestChallengeResponseConfig_check_new_session_uri(t *testing.T) {
 	cfg := ChallengeResponseConfig{
-		Nonce:        []byte{0xde, 0xad, 0xbe, 0xef},
-		UserCallback: userCallBackOK,
+		Nonce:           []byte{0xde, 0xad, 0xbe, 0xef},
+		EvidenceBuilder: testEvidenceBuilder{},
 	}
 
 	err := cfg.check()
