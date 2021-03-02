@@ -15,22 +15,15 @@ import (
 	"time"
 )
 
-// ChallengeResponseCallback is the interface between the challenge-response
-// protocol FSM and the user. The user is given a nonce and the list of
-// acceptable Evidence formats and is asked to return the serialized Evidence as
-// a byte array together with its media type - or an error if anything goes
-// wrong.
-type ChallengeResponseCallback func(nonce []byte, accept []string) (evidence []byte, mediaType string, err error)
-
 // ChallengeResponseConfig holds the configuration for one or more
 // challenge-response exchanges
 type ChallengeResponseConfig struct {
-	Nonce         []byte                    // an explicit nonce supplied by the user
-	NonceSz       uint                      // the size of a nonce to be provided by server
-	UserCallback  ChallengeResponseCallback // Evidence generation logics supplied by the user
-	NewSessionURI string                    // URI of the "/newSession" endpoint
-	Client        *Client                   // HTTP(s) client connection configuration
-	DeleteSession bool                      // explicitly DELETE the session object after we are done
+	Nonce           []byte          // an explicit nonce supplied by the user
+	NonceSz         uint            // the size of a nonce to be provided by server
+	EvidenceBuilder EvidenceBuilder // Evidence generation logics supplied by the user
+	NewSessionURI   string          // URI of the "/newSession" endpoint
+	Client          *Client         // HTTP(s) client connection configuration
+	DeleteSession   bool            // explicitly DELETE the session object after we are done
 }
 
 // Blob wraps a base64 encoded value together with its media type
@@ -68,7 +61,7 @@ func (cfg ChallengeResponseConfig) Run() ([]byte, error) {
 		return nil, fmt.Errorf("new challenge-response session creation failed: %w", err)
 	}
 
-	evidence, mediaType, err := cfg.UserCallback(newSessionCtx.Nonce, newSessionCtx.Accept)
+	evidence, mediaType, err := cfg.EvidenceBuilder.BuildEvidence(newSessionCtx.Nonce, newSessionCtx.Accept)
 	if err != nil {
 		return nil, fmt.Errorf("evidence generation failed: %w", err)
 	}
@@ -207,8 +200,8 @@ func (cfg ChallengeResponseConfig) check() error {
 		return errors.New("bad configuration: only one of nonce or nonce size must be specified")
 	}
 
-	if cfg.UserCallback == nil {
-		return errors.New("bad configuration: missing callback")
+	if cfg.EvidenceBuilder == nil {
+		return errors.New("bad configuration: the evidence builder is missing")
 	}
 
 	if cfg.NewSessionURI == "" {

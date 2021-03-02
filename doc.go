@@ -7,13 +7,17 @@ https://github.com/veraison/veraison/tree/main/docs/api
 
 Challenge-Response
 
-The user provides the Evidence generation logics by implementing a
-ChallengeResponseCallback function:
+The user provides the Evidence generation logics by implementing the
+EvidenceBuilder interface:
 
-	func MyChallengeResponseCallback(nonce []byte, accept []string) ([]byte, string, error) {
-		for ct := range accept {
+	type MyEvidenceBuilder struct {
+		// build context (e.g., signing key material, claims template, etc.)
+	}
+
+	func (eb MyEvidenceBuilder) BuildEvidence(nonce []byte, accept []string) ([]byte, string, error) {
+		for _, ct := range accept {
 			if ct == "application/my-evidence-media-type" {
-				evidence, err := myEvidenceBuilder(nonce)
+				evidence, err := buildEvidence(nonce, eb)
 				if err != nil { ... }
 
 				return evidence, ct, nil
@@ -28,17 +32,17 @@ The user then creates a ChallengeResponseConfig object supplying the callback
 and either an explicit nonce:
 
 	cfg := ChallengeResponseConfig{
-		Nonce:         []byte{0xde, 0xad, 0xbe, 0xef},
-		UserCallback:  MyChallengeResponseCallback,
-		NewSessionURI: "http://veraison.example/challenge-response/v1/newSession",
+		Nonce:           []byte{0xde, 0xad, 0xbe, 0xef},
+		EvidenceBuilder: MyEvidenceBuilder{...},
+		NewSessionURI:   "http://veraison.example/challenge-response/v1/newSession",
 	}
 
 or just the size of a nonce to be provided by the server side:
 
 	cfg := ChallengeResponseConfig{
-		NonceSz:        32,
-		UserCallback:   MyChallengeResponseCallback,
-		NewSessionURI: "http://veraison.example/challenge-response/v1/newSession",
+		NonceSz:         32,
+		EvidenceBuilder: MyEvidenceBuilder{...},
+		NewSessionURI:   "http://veraison.example/challenge-response/v1/newSession",
 	}
 
 The user can also supply a custom Client object, for example to appropriately
