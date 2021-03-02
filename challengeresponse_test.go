@@ -135,10 +135,10 @@ func TestChallengeResponseConfig_newSession_relative_location_ok(t *testing.T) {
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
-		Nonce:         []byte{0xde, 0xad, 0xbe, 0xef},
-		UserCallback:  userCallBackOK,
-		NewSessionURI: "http://veraison.example/challenge-response/v1/newSession",
-		Client:        client,
+		Nonce:           []byte{0xde, 0xad, 0xbe, 0xef},
+		EvidenceBuilder: testEvidenceBuilder{},
+		NewSessionURI:   "http://veraison.example/challenge-response/v1/newSession",
+		Client:          client,
 	}
 
 	actualBody, actualSessionURI, err := cfg.newSession()
