@@ -93,6 +93,56 @@ func TestChallengeResponseConfig_newSession_ok(t *testing.T) {
 	assert.Equal(t, expectedBody, actualBody)
 }
 
+func TestChallengeResponseConfig_newSession_relative_location_ok(t *testing.T) {
+	newSessionCreatedBody := `
+{
+	"nonce": "3q2+7w==",
+	"expiry": "2030-10-12T07:20:50.52Z",
+	"accept": [
+		"application/psa-attestation-token"
+	],
+	"state": "waiting"
+}`
+
+	expectedBody := &RatsChallengeResponseSession{
+		Nonce:  testNonce,
+		Expiry: "2030-10-12T07:20:50.52Z",
+		Accept: []string{
+			"application/psa-attestation-token",
+		},
+		State: "waiting",
+	}
+
+	expectedSessionURI := "http://veraison.example/challenge-response/v1/session/1"
+	relativeSessionURI := "/challenge-response/v1/session/1"
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "3q2+7w==", r.URL.Query().Get("nonce"))
+		assert.Equal(t, "application/rats-challenge-response-session+json", r.Header.Get("Accept"))
+
+		w.Header().Set("Location", relativeSessionURI)
+		w.WriteHeader(http.StatusCreated)
+		_, e := w.Write([]byte(newSessionCreatedBody))
+		require.Nil(t, e)
+	})
+
+	client, teardown := newTestingHTTPClient(h)
+	defer teardown()
+
+	cfg := ChallengeResponseConfig{
+		Nonce:         []byte{0xde, 0xad, 0xbe, 0xef},
+		UserCallback:  userCallBackOK,
+		NewSessionURI: "http://veraison.example/challenge-response/v1/newSession",
+		Client:        client,
+	}
+
+	actualBody, actualSessionURI, err := cfg.newSession()
+
+	assert.Nil(t, err)
+	assert.Equal(t, expectedSessionURI, actualSessionURI)
+	assert.Equal(t, expectedBody, actualBody)
+}
+
 func TestChallengeResponseConfig_check_nonce_at_least_one(t *testing.T) {
 	cfg := ChallengeResponseConfig{
 		UserCallback:  userCallBackOK,

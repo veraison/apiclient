@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -132,6 +133,16 @@ func (cfg ChallengeResponseConfig) newSession() (*RatsChallengeResponseSession, 
 		return nil, "", fmt.Errorf("malformed newSession response: missing Location header")
 	}
 
+	// location may be a relative URL.  Make sure we resolve it to an absolute one
+	// that can be safely used in the next API round
+	sessionURI, err = cfg.resolveReference(sessionURI)
+	if err != nil {
+		return nil, "", fmt.Errorf(
+			"newSession response: the returned Location (%s) is not a valid URI: %w",
+			sessionURI, err,
+		)
+	}
+
 	// Parse JSON body into a ChallengeResponseNewSessionResponse object
 	defer res.Body.Close()
 
@@ -143,6 +154,24 @@ func (cfg ChallengeResponseConfig) newSession() (*RatsChallengeResponseSession, 
 	}
 
 	return &j, sessionURI, nil
+}
+
+func (cfg ChallengeResponseConfig) resolveReference(sessionURI string) (string, error) {
+	u, err := url.Parse(sessionURI)
+	if err != nil {
+		return "", fmt.Errorf("parsing session URI: %w", err)
+	}
+
+	if u.IsAbs() {
+		return sessionURI, nil
+	}
+
+	base, err := url.Parse(cfg.NewSessionURI)
+	if err != nil {
+		return "", fmt.Errorf("parsing base URI: %w", err)
+	}
+
+	return base.ResolveReference(u).String(), nil
 }
 
 // buildNewSessionRequest creates the POST request to the /newSession endpoint
