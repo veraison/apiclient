@@ -15,8 +15,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var testNonce []byte = []byte{0xde, 0xad, 0xbe, 0xef}
-var testEvidence []byte = []byte{0x0e, 0x0d, 0x0e}
+var (
+	testNonce    []byte = []byte{0xde, 0xad, 0xbe, 0xef}
+	testEvidence []byte = []byte{0x0e, 0x0d, 0x0e}
+
+	testBaseURI       = "http://veraison.example"
+	testRelSessionURI = "/challenge-response/v1/session/1"
+	testSessionURI    = testBaseURI + testRelSessionURI
+	testNewSessionURI = testBaseURI + "/challenge-response/v1/newSession"
+)
 
 type testEvidenceBuilder struct{}
 
@@ -48,7 +55,7 @@ func newTestingHTTPClient(handler http.Handler) (cli *Client, closerFn func()) {
 	return
 }
 
-func TestChallengeResponseConfig_newSession_ok(t *testing.T) {
+func TestChallengeResponseConfig_NewSession_ok(t *testing.T) {
 	newSessionCreatedBody := `
 {
     "nonce": "3q2+7w==",
@@ -56,7 +63,7 @@ func TestChallengeResponseConfig_newSession_ok(t *testing.T) {
     "accept": [
         "application/psa-attestation-token"
     ],
-    "state": "waiting"	
+    "state": "waiting"
 }`
 
 	expectedBody := &RatsChallengeResponseSession{
@@ -68,7 +75,7 @@ func TestChallengeResponseConfig_newSession_ok(t *testing.T) {
 		State: "waiting",
 	}
 
-	expectedSessionURI := "http://veraison.example/challenge-response/v1/session/1"
+	expectedSessionURI := testSessionURI
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
@@ -85,20 +92,68 @@ func TestChallengeResponseConfig_newSession_ok(t *testing.T) {
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
-		Nonce:           []byte{0xde, 0xad, 0xbe, 0xef},
-		EvidenceBuilder: testEvidenceBuilder{},
-		NewSessionURI:   "http://veraison.example/challenge-response/v1/newSession",
-		Client:          client,
+		Nonce:         testNonce,
+		NewSessionURI: testNewSessionURI,
+		Client:        client,
 	}
 
-	actualBody, actualSessionURI, err := cfg.newSession()
+	actualBody, actualSessionURI, err := cfg.NewSession()
 
 	assert.Nil(t, err)
 	assert.Equal(t, expectedSessionURI, actualSessionURI)
 	assert.Equal(t, expectedBody, actualBody)
 }
 
-func TestChallengeResponseConfig_newSession_relative_location_ok(t *testing.T) {
+func TestChallengeResponseConfig_NewSession_server_chosen_nonce_ok(t *testing.T) {
+	newSessionCreatedBody := `
+{
+    "nonce": "3q2+7w==",
+    "expiry": "2030-10-12T07:20:50.52Z",
+    "accept": [
+        "application/psa-attestation-token"
+    ],
+    "state": "waiting"
+}`
+
+	expectedBody := &RatsChallengeResponseSession{
+		Nonce:  testNonce,
+		Expiry: "2030-10-12T07:20:50.52Z",
+		Accept: []string{
+			"application/psa-attestation-token",
+		},
+		State: "waiting",
+	}
+
+	expectedSessionURI := testSessionURI
+
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "4", r.URL.Query().Get("nonceSize"))
+		assert.Equal(t, "application/rats-challenge-response-session+json", r.Header.Get("Accept"))
+
+		w.Header().Set("Location", expectedSessionURI)
+		w.WriteHeader(http.StatusCreated)
+		_, e := w.Write([]byte(newSessionCreatedBody))
+		require.Nil(t, e)
+	})
+
+	client, teardown := newTestingHTTPClient(h)
+	defer teardown()
+
+	cfg := ChallengeResponseConfig{
+		NonceSz:       4,
+		NewSessionURI: testNewSessionURI,
+		Client:        client,
+	}
+
+	actualBody, actualSessionURI, err := cfg.NewSession()
+
+	assert.Nil(t, err)
+	assert.Equal(t, expectedSessionURI, actualSessionURI)
+	assert.Equal(t, expectedBody, actualBody)
+}
+
+func TestChallengeResponseConfig_NewSession_relative_location_ok(t *testing.T) {
 	newSessionCreatedBody := `
 {
 	"nonce": "3q2+7w==",
@@ -118,8 +173,8 @@ func TestChallengeResponseConfig_newSession_relative_location_ok(t *testing.T) {
 		State: "waiting",
 	}
 
-	expectedSessionURI := "http://veraison.example/challenge-response/v1/session/1"
-	relativeSessionURI := "/challenge-response/v1/session/1"
+	expectedSessionURI := testSessionURI
+	relativeSessionURI := testRelSessionURI
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "3q2+7w==", r.URL.Query().Get("nonce"))
@@ -135,13 +190,12 @@ func TestChallengeResponseConfig_newSession_relative_location_ok(t *testing.T) {
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
-		Nonce:           []byte{0xde, 0xad, 0xbe, 0xef},
-		EvidenceBuilder: testEvidenceBuilder{},
-		NewSessionURI:   "http://veraison.example/challenge-response/v1/newSession",
-		Client:          client,
+		Nonce:         testNonce,
+		NewSessionURI: testNewSessionURI,
+		Client:        client,
 	}
 
-	actualBody, actualSessionURI, err := cfg.newSession()
+	actualBody, actualSessionURI, err := cfg.NewSession()
 
 	assert.Nil(t, err)
 	assert.Equal(t, expectedSessionURI, actualSessionURI)
@@ -151,46 +205,77 @@ func TestChallengeResponseConfig_newSession_relative_location_ok(t *testing.T) {
 func TestChallengeResponseConfig_check_nonce_at_least_one(t *testing.T) {
 	cfg := ChallengeResponseConfig{
 		EvidenceBuilder: testEvidenceBuilder{},
-		NewSessionURI:   "https://veraison.example/challenge-response/v1/newSession",
+		NewSessionURI:   testNewSessionURI,
 	}
 
-	err := cfg.check()
-	assert.Error(t, err, "bad configuration: missing nonce info")
+	for _, atomic := range []bool{true, false} {
+		err := cfg.check(atomic)
+		assert.EqualError(t, err, "bad configuration: missing nonce info")
+	}
 }
 
 func TestChallengeResponseConfig_check_nonce_at_most_one(t *testing.T) {
 	cfg := ChallengeResponseConfig{
-		Nonce:           []byte{0xde, 0xad, 0xbe, 0xef},
+		Nonce:           testNonce,
 		NonceSz:         32,
 		EvidenceBuilder: testEvidenceBuilder{},
-		NewSessionURI:   "https://veraison.example/challenge-response/v1/newSession",
+		NewSessionURI:   testNewSessionURI,
 	}
 
-	err := cfg.check()
-	assert.Error(t, err, "bad configuration: only one of nonce or nonce size must be specified")
+	for _, atomic := range []bool{true, false} {
+		err := cfg.check(atomic)
+		assert.EqualError(t, err, "bad configuration: only one of nonce or nonce size must be specified")
+	}
 }
 
-func TestChallengeResponseConfig_check_evidence_builder(t *testing.T) {
+func TestChallengeResponseConfig_check_evidence_builder_absence(t *testing.T) {
 	cfg := ChallengeResponseConfig{
-		Nonce:         []byte{0xde, 0xad, 0xbe, 0xef},
-		NewSessionURI: "https://veraison.example/challenge-response/v1/newSession",
+		Nonce:         testNonce,
+		NewSessionURI: testNewSessionURI,
 	}
 
-	err := cfg.check()
-	assert.Error(t, err, "bad configuration: the evidence builder is missing")
+	for _, atomic := range []bool{true, false} {
+		err := cfg.check(atomic)
+		switch atomic {
+		case true:
+			assert.EqualError(t, err, "bad configuration: the evidence builder is missing")
+		case false:
+			assert.Nil(t, err)
+		}
+	}
+}
+
+func TestChallengeResponseConfig_check_evidence_builder_presence(t *testing.T) {
+	cfg := ChallengeResponseConfig{
+		Nonce:           testNonce,
+		NewSessionURI:   testNewSessionURI,
+		EvidenceBuilder: testEvidenceBuilder{},
+	}
+
+	for _, atomic := range []bool{true, false} {
+		err := cfg.check(atomic)
+		switch atomic {
+		case true:
+			assert.Nil(t, err)
+		case false:
+			assert.EqualError(t, err, "bad configuration: found non-nil evidence builder in non-atomic mode")
+		}
+	}
 }
 
 func TestChallengeResponseConfig_check_new_session_uri(t *testing.T) {
 	cfg := ChallengeResponseConfig{
-		Nonce:           []byte{0xde, 0xad, 0xbe, 0xef},
+		Nonce:           testNonce,
 		EvidenceBuilder: testEvidenceBuilder{},
 	}
 
-	err := cfg.check()
-	assert.Error(t, err, "bad configuration: no API endpoint")
+	for _, atomic := range []bool{true, false} {
+		err := cfg.check(atomic)
+		assert.EqualError(t, err, "bad configuration: no API endpoint")
+	}
 }
 
-func TestChallengeResponseConfig_challengeResponse_sync_ok(t *testing.T) {
+func TestChallengeResponseConfig_ChallengeResponse_sync_ok(t *testing.T) {
 	sessionBody := `
 {
     "nonce": "3q2+7w==",
@@ -211,7 +296,7 @@ func TestChallengeResponseConfig_challengeResponse_sync_ok(t *testing.T) {
 
 	mediaType := "application/psa-attestation-token"
 	evidence := []byte("evidence")
-	sessionURI := "http://veraison.example/challenge-response/v1/session/1"
+	sessionURI := testSessionURI
 
 	expectedResult := `{ "is_valid": true, "claims": {} }`
 
@@ -232,17 +317,19 @@ func TestChallengeResponseConfig_challengeResponse_sync_ok(t *testing.T) {
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
-		Client: client,
+		Client:        client,
+		Nonce:         testNonce,
+		NewSessionURI: testNewSessionURI,
 	}
 
-	actualResult, err := cfg.challengeResponse(evidence, mediaType, sessionURI)
+	actualResult, err := cfg.ChallengeResponse(evidence, mediaType, sessionURI)
 
 	assert.Nil(t, err)
 	assert.JSONEq(t, expectedResult, string(actualResult))
 }
 
 func TestChallengeResponseConfig_deleteSession_ok(t *testing.T) {
-	sessionURI := "http://veraison.example/challenge-response/v1/session/1"
+	sessionURI := testSessionURI
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodDelete, r.Method)
@@ -281,7 +368,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_ok(t *testing.T) {
     }
 }`
 
-	sessionURI := "http://veraison.example/challenge-response/v1/session/1"
+	sessionURI := testSessionURI
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
@@ -321,7 +408,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_failed_state(t *testin
     }
 }`
 
-	sessionURI := "http://veraison.example/challenge-response/v1/session/1"
+	sessionURI := testSessionURI
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
@@ -358,7 +445,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_unexpected_state(t *te
     }
 }`
 
-	sessionURI := "http://veraison.example/challenge-response/v1/session/1"
+	sessionURI := testSessionURI
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
@@ -396,7 +483,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_exhaustion(t *testing.
     }
 }`
 
-	sessionURI := "http://veraison.example/challenge-response/v1/session/1"
+	sessionURI := testSessionURI
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
@@ -416,4 +503,52 @@ func TestChallengeResponseConfig_pollForAttestationResult_exhaustion(t *testing.
 	_, err := cfg.pollForAttestationResult(sessionURI)
 
 	assert.EqualError(t, err, "polling attempts exhausted, session resource state still not complete")
+}
+
+func TestChallengeResponseConfig_pollForAttestationResult_corrupted_resource(t *testing.T) {
+
+	sessionBody := `
+{
+    "nonce": "3q2+7w==",
+    "expiry": "2030-10-12T07:20:50.52Z",
+    "accept": [
+        "application/psa-attestation-token"
+    ],
+    "state": "processing",
+	"evidence": {
+        "type": "application/psa-attestation-token",
+        "value": "ZXZpZGVuY2U="
+}`
+
+	sessionURI := testSessionURI
+
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+
+		w.WriteHeader(http.StatusOK)
+		_, e := w.Write([]byte(sessionBody))
+		require.Nil(t, e)
+	})
+
+	client, teardown := newTestingHTTPClient(h)
+	defer teardown()
+
+	cfg := ChallengeResponseConfig{
+		Client: client,
+	}
+
+	_, err := cfg.pollForAttestationResult(sessionURI)
+
+	assert.EqualError(t, err, "failure decoding session resource: unexpected EOF")
+}
+
+func TestChallengeResponseConfig_ChallengeResponse_bad_config_nil_client(t *testing.T) {
+	cfg := ChallengeResponseConfig{
+		Nonce:         testNonce,
+		NewSessionURI: testNewSessionURI,
+	}
+
+	_, err := cfg.ChallengeResponse(testEvidence, "application/*", testSessionURI)
+
+	assert.EqualError(t, err, "bad configuration: nil client")
 }

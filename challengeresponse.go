@@ -47,7 +47,7 @@ type RatsChallengeResponseSession struct {
 // Run implements the challenge-response protocol FSM invoking the user
 // callback. On success, the received Attestation Result is returned.
 func (cfg ChallengeResponseConfig) Run() ([]byte, error) {
-	if err := cfg.check(); err != nil {
+	if err := cfg.check(true); err != nil {
 		return nil, err
 	}
 
@@ -66,12 +66,44 @@ func (cfg ChallengeResponseConfig) Run() ([]byte, error) {
 		return nil, fmt.Errorf("evidence generation failed: %w", err)
 	}
 
-	attestationResult, err := cfg.challengeResponse(evidence, mediaType, sessionURI)
+	return cfg.ChallengeResponse(evidence, mediaType, sessionURI)
+}
+
+// NewSession runs the first part of the interaction which deals with session
+// creation, nonce and token format negotiation. On success, the session object
+// is returned together with the URI of the new session endpoint
+func (cfg ChallengeResponseConfig) NewSession() (*RatsChallengeResponseSession, string, error) {
+	if err := cfg.check(false); err != nil {
+		return nil, "", err
+	}
+
+	// Attach the default client if the user hasn't supplied one
+	if cfg.Client == nil {
+		cfg.Client = NewClient()
+	}
+
+	return cfg.newSession()
+}
+
+// ChallengeResponse runs the second portion of the interaction protocol that
+// deals with Evidence submission and retrieval of the associated Attestation
+// Result.  On success, the Attestation result in JSON format is returned.
+func (cfg ChallengeResponseConfig) ChallengeResponse(
+	evidence []byte,
+	mediaType string,
+	uri string,
+) ([]byte, error) {
+	// At this point we must assume we have a Client
+	if cfg.Client == nil {
+		return nil, errors.New("bad configuration: nil client")
+	}
+
+	attestationResult, err := cfg.challengeResponse(evidence, mediaType, uri)
 
 	// if requested, explicitly call DELETE on the session resource
 	if cfg.DeleteSession {
-		if err = cfg.deleteSession(sessionURI); err != nil {
-			log.Printf("DELETE %s failed: %v", sessionURI, err)
+		if err = cfg.deleteSession(uri); err != nil {
+			log.Printf("DELETE %s failed: %v", uri, err)
 		}
 	}
 
@@ -99,9 +131,6 @@ func (cfg ChallengeResponseConfig) deleteSession(uri string) error {
 	return nil
 }
 
-// newSession runs the first part of the interaction which deals with session
-// creation, nonce and token format negotiation. On success, the session object
-// is returned together with the URI of the new session endpoint
 func (cfg ChallengeResponseConfig) newSession() (*RatsChallengeResponseSession, string, error) {
 	client := &cfg.Client.HTTPClient
 
@@ -191,7 +220,7 @@ func (cfg ChallengeResponseConfig) buildNewSessionRequest() (*http.Request, erro
 }
 
 // check makes sure that the config object is in good shape
-func (cfg ChallengeResponseConfig) check() error {
+func (cfg ChallengeResponseConfig) check(atomicRun bool) error {
 	if cfg.NonceSz == 0 && len(cfg.Nonce) == 0 {
 		return errors.New("bad configuration: missing nonce info")
 	}
@@ -200,12 +229,18 @@ func (cfg ChallengeResponseConfig) check() error {
 		return errors.New("bad configuration: only one of nonce or nonce size must be specified")
 	}
 
-	if cfg.EvidenceBuilder == nil {
-		return errors.New("bad configuration: the evidence builder is missing")
-	}
-
 	if cfg.NewSessionURI == "" {
 		return errors.New("bad configuration: no API endpoint")
+	}
+
+	if atomicRun {
+		if cfg.EvidenceBuilder == nil {
+			return errors.New("bad configuration: the evidence builder is missing")
+		}
+	} else {
+		if cfg.EvidenceBuilder != nil {
+			return errors.New("bad configuration: found non-nil evidence builder in non-atomic mode")
+		}
 	}
 
 	// It's OK if we don't have a client at this point in time; if needed we
@@ -214,9 +249,6 @@ func (cfg ChallengeResponseConfig) check() error {
 	return nil
 }
 
-// challengeResponse runs the second portion of the interaction protocol that
-// deals with Evidence submission and retrieval of the associated Attestation
-// Result.  On success, the Attestation result in JSON format is returned.
 func (cfg ChallengeResponseConfig) challengeResponse(
 	evidence []byte,
 	mediaType string,
@@ -261,7 +293,11 @@ func (cfg ChallengeResponseConfig) challengeResponse(
 	}
 }
 
-// pollForAttestationResult fetches the
+// pollForAttestationResult polls the supplied URI until the resource state
+// transitions to "complete". If so, the attestation result is returned. If the
+// resource state is still "processing" when the configured number of polls has
+// been attempted, or the state of the resource transitions to "failed", an
+// error is returned.
 func (cfg ChallengeResponseConfig) pollForAttestationResult(uri string) ([]byte, error) {
 	client := &cfg.Client.HTTPClient
 
@@ -306,7 +342,7 @@ func (cfg ChallengeResponseConfig) pollForAttestationResult(uri string) ([]byte,
 }
 
 // buildVerificationRequest creates the POST request to the instantiated
-// /session endpoint
+// session endpoint
 func (cfg ChallengeResponseConfig) buildVerificationRequest(
 	evidence []byte,
 	mediaType string,
