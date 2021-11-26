@@ -1,18 +1,18 @@
 // Copyright 2021 Contributors to the Veraison project.
 // SPDX-License-Identifier: Apache-2.0
 
-package apiclient
+package verification
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"time"
+
+	"github.com/veraison/apiclient/common"
 )
 
 // ChallengeResponseConfig holds the configuration for one or more
@@ -22,7 +22,7 @@ type ChallengeResponseConfig struct {
 	NonceSz         uint            // the size of a nonce to be provided by server
 	EvidenceBuilder EvidenceBuilder // Evidence generation logics supplied by the user
 	NewSessionURI   string          // URI of the "/newSession" endpoint
-	Client          *Client         // HTTP(s) client connection configuration
+	Client          *common.Client  // HTTP(s) client connection configuration
 	DeleteSession   bool            // explicitly DELETE the session object after we are done
 }
 
@@ -33,13 +33,13 @@ type Blob struct {
 	Value []byte `json:"value"`
 }
 
-// RatsChallengeResponseSession models the rats-challenge-response-session+json
+// ChallengeResponseSession models the rats-challenge-response-session+json
 // media type, i.e., the representation of the session resource server-side
-type RatsChallengeResponseSession struct {
+type ChallengeResponseSession struct {
 	Nonce    []byte          `json:"nonce"`
 	Expiry   string          `json:"expiry"`
 	Accept   []string        `json:"accept"`
-	State    string          `json:"state"`
+	Status   string          `json:"status"`
 	Evidence Blob            `json:"evidence"`
 	Result   json.RawMessage `json:"result"`
 }
@@ -53,7 +53,7 @@ func (cfg ChallengeResponseConfig) Run() ([]byte, error) {
 
 	// Attach the default client if the user hasn't supplied one
 	if cfg.Client == nil {
-		cfg.Client = NewClient()
+		cfg.Client = common.NewClient()
 	}
 
 	newSessionCtx, sessionURI, err := cfg.newSession()
@@ -72,14 +72,14 @@ func (cfg ChallengeResponseConfig) Run() ([]byte, error) {
 // NewSession runs the first part of the interaction which deals with session
 // creation, nonce and token format negotiation. On success, the session object
 // is returned together with the URI of the new session endpoint
-func (cfg ChallengeResponseConfig) NewSession() (*RatsChallengeResponseSession, string, error) {
+func (cfg ChallengeResponseConfig) NewSession() (*ChallengeResponseSession, string, error) {
 	if err := cfg.check(false); err != nil {
 		return nil, "", err
 	}
 
 	// Attach the default client if the user hasn't supplied one
 	if cfg.Client == nil {
-		cfg.Client = NewClient()
+		cfg.Client = common.NewClient()
 	}
 
 	return cfg.newSession()
@@ -101,8 +101,9 @@ func (cfg ChallengeResponseConfig) ChallengeResponse(
 	attestationResult, err := cfg.challengeResponse(evidence, mediaType, uri)
 
 	// if requested, explicitly call DELETE on the session resource
+
 	if cfg.DeleteSession {
-		if err = cfg.deleteSession(uri); err != nil {
+		if err = cfg.Client.DeleteResource(uri); err != nil {
 			log.Printf("DELETE %s failed: %v", uri, err)
 		}
 	}
@@ -110,36 +111,8 @@ func (cfg ChallengeResponseConfig) ChallengeResponse(
 	return attestationResult, err
 }
 
-func (cfg ChallengeResponseConfig) deleteSession(uri string) error {
-	client := &cfg.Client.HTTPClient
-
-	deleteSessionReq, err := http.NewRequest("DELETE", uri, nil)
-	if err != nil {
-		return fmt.Errorf("building request for deleting session: %w", err)
-	}
-
-	res, err := client.Do(deleteSessionReq)
-	if err != nil {
-		return fmt.Errorf("request for deleting session failed: %w", err)
-	}
-
-	// Expect 204
-	if res.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("deleting session response has unexpected status: %s", res.Status)
-	}
-
-	return nil
-}
-
-func (cfg ChallengeResponseConfig) newSession() (*RatsChallengeResponseSession, string, error) {
-	client := &cfg.Client.HTTPClient
-
-	newSessionReq, err := cfg.buildNewSessionRequest()
-	if err != nil {
-		return nil, "", fmt.Errorf("newSession request failed: %w", err)
-	}
-
-	res, err := client.Do(newSessionReq)
+func (cfg ChallengeResponseConfig) newSession() (*ChallengeResponseSession, string, error) {
+	res, err := cfg.newSessionRequest()
 	if err != nil {
 		return nil, "", fmt.Errorf("newSession request failed: %w", err)
 	}
@@ -150,54 +123,24 @@ func (cfg ChallengeResponseConfig) newSession() (*RatsChallengeResponseSession, 
 		return nil, "", fmt.Errorf("newSession response has unexpected status: %s", res.Status)
 	}
 
-	sessionURI := res.Header.Get("Location")
-	if sessionURI == "" {
-		return nil, "", fmt.Errorf("malformed newSession response: missing Location header")
+	sessionURI, err := common.ExtractLocation(res, cfg.NewSessionURI)
+	if err != nil {
+		return nil, "", fmt.Errorf("cannot determine URI for the session resource: %w", err)
 	}
 
-	// location may be a relative URL.  Make sure we resolve it to an absolute one
-	// that can be safely used in the next API round
-	sessionURI, err = cfg.resolveReference(sessionURI)
+	j := ChallengeResponseSession{}
+
+	// Parse JSON body into a ChallengeResponseSession object
+	err = common.DecodeJSONBody(res, &j)
 	if err != nil {
-		return nil, "", fmt.Errorf(
-			"newSession response: the returned Location (%s) is not a valid URI: %w",
-			sessionURI, err,
-		)
-	}
-
-	// Parse JSON body into a ChallengeResponseNewSessionResponse object
-	defer res.Body.Close()
-
-	j := RatsChallengeResponseSession{}
-
-	err = json.NewDecoder(res.Body).Decode(&j)
-	if err != nil {
-		return nil, "", fmt.Errorf("failure decoding newSession response body: %w", err)
+		return nil, "", fmt.Errorf("failure JSON decoding response body: %w", err)
 	}
 
 	return &j, sessionURI, nil
 }
 
-func (cfg ChallengeResponseConfig) resolveReference(sessionURI string) (string, error) {
-	u, err := url.Parse(sessionURI)
-	if err != nil {
-		return "", fmt.Errorf("parsing session URI: %w", err)
-	}
-
-	if u.IsAbs() {
-		return sessionURI, nil
-	}
-
-	base, err := url.Parse(cfg.NewSessionURI)
-	if err != nil {
-		return "", fmt.Errorf("parsing base URI: %w", err)
-	}
-
-	return base.ResolveReference(u).String(), nil
-}
-
-// buildNewSessionRequest creates the POST request to the /newSession endpoint
-func (cfg ChallengeResponseConfig) buildNewSessionRequest() (*http.Request, error) {
+// newSessionRequest creates the POST request to the /newSession endpoint
+func (cfg ChallengeResponseConfig) newSessionRequest() (*http.Response, error) {
 	req, err := http.NewRequest("POST", cfg.NewSessionURI, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building request for new session: %w", err)
@@ -214,9 +157,16 @@ func (cfg ChallengeResponseConfig) buildNewSessionRequest() (*http.Request, erro
 	req.URL.RawQuery = q.Encode()
 
 	// add the Accept header
-	req.Header.Set("Accept", "application/rats-challenge-response-session+json")
+	req.Header.Set("Accept", "application/vnd.veraison.challenge-response-session+json")
 
-	return req, nil
+	hc := &cfg.Client.HTTPClient
+
+	res, err := hc.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("newSession request failed: %w", err)
+	}
+
+	return res, nil
 }
 
 // check makes sure that the config object is in good shape
@@ -254,33 +204,29 @@ func (cfg ChallengeResponseConfig) challengeResponse(
 	mediaType string,
 	uri string,
 ) ([]byte, error) {
-	client := &cfg.Client.HTTPClient
-
-	// build POST request with token
-	sessionReq, err := cfg.buildVerificationRequest(evidence, mediaType, uri)
+	// build POST request with attestation evidence
+	res, err := cfg.Client.PostResource(
+		evidence,
+		mediaType,
+		"application/vnd.veraison.challenge-response-session+json",
+		uri,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("session request failed: %w", err)
-	}
-
-	res, err := client.Do(sessionReq)
-	if err != nil {
-		return nil, fmt.Errorf("newSession request failed: %w", err)
 	}
 
 	// switch resp.status
 	switch res.StatusCode {
 	case http.StatusOK:
-		defer res.Body.Close()
+		j := ChallengeResponseSession{}
 
-		j := RatsChallengeResponseSession{}
-
-		err = json.NewDecoder(res.Body).Decode(&j)
+		err = common.DecodeJSONBody(res, &j)
 		if err != nil {
-			return nil, fmt.Errorf("failure decoding session response body: %w", err)
+			return nil, fmt.Errorf("failure decoding session resource body: %w", err)
 		}
 
-		if j.State != "complete" {
-			return nil, fmt.Errorf("unexpected session state: %s", j.State)
+		if j.Status != common.APIStatusComplete {
+			return nil, fmt.Errorf("unexpected session state: %s", j.Status)
 		}
 
 		return j.Result, nil
@@ -301,13 +247,7 @@ func (cfg ChallengeResponseConfig) challengeResponse(
 func (cfg ChallengeResponseConfig) pollForAttestationResult(uri string) ([]byte, error) {
 	client := &cfg.Client.HTTPClient
 
-	// TODO(tho) make these two configurable
-	const (
-		pollPeriod  = 1 * time.Second
-		maxAttempts = 2
-	)
-
-	for attempt := 1; attempt < maxAttempts; attempt++ {
+	for attempt := 1; attempt < common.MaxAttempts; attempt++ {
 		res, err := client.Get(uri)
 		if err != nil {
 			return nil, fmt.Errorf("session resource fetch failed: %w", err)
@@ -317,47 +257,24 @@ func (cfg ChallengeResponseConfig) pollForAttestationResult(uri string) ([]byte,
 			return nil, fmt.Errorf("session resource fetch returned an unexpected status: %s", res.Status)
 		}
 
-		defer res.Body.Close()
+		j := ChallengeResponseSession{}
 
-		j := RatsChallengeResponseSession{}
-
-		err = json.NewDecoder(res.Body).Decode(&j)
+		err = common.DecodeJSONBody(res, &j)
 		if err != nil {
 			return nil, fmt.Errorf("failure decoding session resource: %w", err)
 		}
 
-		switch j.State {
-		case "complete":
+		switch j.Status {
+		case common.APIStatusComplete:
 			return j.Result, nil
-		case "failed":
+		case common.APIStatusFailed:
 			return nil, errors.New("session resource in failed state")
-		case "processing":
-			time.Sleep(pollPeriod)
+		case common.APIStatusProcessing:
+			time.Sleep(common.PollPeriod)
 		default:
-			return nil, fmt.Errorf("session resource in unexpected state: %s", j.State)
+			return nil, fmt.Errorf("session resource in unexpected state: %s", j.Status)
 		}
 	}
 
 	return nil, fmt.Errorf("polling attempts exhausted, session resource state still not complete")
-}
-
-// buildVerificationRequest creates the POST request to the instantiated
-// session endpoint
-func (cfg ChallengeResponseConfig) buildVerificationRequest(
-	evidence []byte,
-	mediaType string,
-	uri string,
-) (*http.Request, error) {
-	req, err := http.NewRequest("POST", uri, bytes.NewBuffer(evidence))
-	if err != nil {
-		return nil, fmt.Errorf("making request for verification: %w", err)
-	}
-
-	// add Content-Type as requested
-	req.Header.Set("Content-Type", mediaType)
-
-	// add the Accept header
-	req.Header.Set("Accept", "application/rats-challenge-response-session+json")
-
-	return req, nil
 }

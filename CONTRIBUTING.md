@@ -3,7 +3,7 @@
 Contributions to this project are welcome. We request that you read through
 the guidelines before getting started.
 
-## Contributor License Agreement
+## Contributor License Agreement
 
 Your contribution is accepted under the [Apache 2.0 license](LICENSE).
 
@@ -14,10 +14,11 @@ community guidelines.
 
 ## Contribution
 
-### Code quality
+### Code quality
 
 As a contributor, make sure that you follow the golang coding standards and
 conventions established in:
+
 * [Effective Go](https://golang.org/doc/effective_go.html), and
 * [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
 
@@ -41,8 +42,8 @@ your pull request to the corresponding issue.
 
 Run the tests with:
 
-```text
-$ make test
+```shell
+make test
 ```
 
 ### Presubmit checks
@@ -51,8 +52,8 @@ Before pushing your local branch, please run the presubmit checks, making
 sure that the coverage figures have not degraded and that the linter is still
 happy:
 
-```
-$ make presubmit
+```shell
+make presubmit
 ```
 
 ## Documentation
@@ -60,5 +61,7 @@ $ make presubmit
 User documentation for this project is inlined in the source files. Make sure
 that any piece of functionality that is added, deleted or modified by your
 contribution is reflected in the appropriate places:
-* Overall package description: [`doc.go`](doc.go)
+
+* Verification package description: [`verification/doc.go`](verification/doc.go)
+* Provisioning package description: [`provisioning/doc.go`](provisioning/doc.go)
 * Package methods, global variables & constants: the relevant source file

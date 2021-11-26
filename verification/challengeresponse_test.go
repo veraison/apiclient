@@ -1,18 +1,16 @@
 // Copyright 2021 Contributors to the Veraison project.
 // SPDX-License-Identifier: Apache-2.0
 
-package apiclient
+package verification
 
 import (
-	"context"
 	"io/ioutil"
-	"net"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/veraison/apiclient/common"
 )
 
 var (
@@ -34,27 +32,6 @@ func (testEvidenceBuilder) BuildEvidence(
 	return testEvidence, "application/my-evidence-media-type", nil
 }
 
-// newTestingHTTPClient creates an HTTP test server (with a configurable request
-// handler), an API Client and connects them together.  The API client and the
-// server's shutdown switch are returned.
-func newTestingHTTPClient(handler http.Handler) (cli *Client, closerFn func()) {
-	srv := httptest.NewServer(handler)
-
-	cli = &Client{
-		HTTPClient: http.Client{
-			Transport: &http.Transport{
-				DialContext: func(_ context.Context, network, _ string) (net.Conn, error) {
-					return net.Dial(network, srv.Listener.Addr().String())
-				},
-			},
-		},
-	}
-
-	closerFn = srv.Close
-
-	return
-}
-
 func TestChallengeResponseConfig_NewSession_ok(t *testing.T) {
 	newSessionCreatedBody := `
 {
@@ -63,16 +40,16 @@ func TestChallengeResponseConfig_NewSession_ok(t *testing.T) {
     "accept": [
         "application/psa-attestation-token"
     ],
-    "state": "waiting"
+    "status": "waiting"
 }`
 
-	expectedBody := &RatsChallengeResponseSession{
+	expectedBody := &ChallengeResponseSession{
 		Nonce:  testNonce,
 		Expiry: "2030-10-12T07:20:50.52Z",
 		Accept: []string{
 			"application/psa-attestation-token",
 		},
-		State: "waiting",
+		Status: "waiting",
 	}
 
 	expectedSessionURI := testSessionURI
@@ -80,7 +57,7 @@ func TestChallengeResponseConfig_NewSession_ok(t *testing.T) {
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "3q2+7w==", r.URL.Query().Get("nonce"))
-		assert.Equal(t, "application/rats-challenge-response-session+json", r.Header.Get("Accept"))
+		assert.Equal(t, "application/vnd.veraison.challenge-response-session+json", r.Header.Get("Accept"))
 
 		w.Header().Set("Location", expectedSessionURI)
 		w.WriteHeader(http.StatusCreated)
@@ -88,7 +65,7 @@ func TestChallengeResponseConfig_NewSession_ok(t *testing.T) {
 		require.Nil(t, e)
 	})
 
-	client, teardown := newTestingHTTPClient(h)
+	client, teardown := common.NewTestingHTTPClient(h)
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
@@ -112,16 +89,16 @@ func TestChallengeResponseConfig_NewSession_server_chosen_nonce_ok(t *testing.T)
     "accept": [
         "application/psa-attestation-token"
     ],
-    "state": "waiting"
+    "status": "waiting"
 }`
 
-	expectedBody := &RatsChallengeResponseSession{
+	expectedBody := &ChallengeResponseSession{
 		Nonce:  testNonce,
 		Expiry: "2030-10-12T07:20:50.52Z",
 		Accept: []string{
 			"application/psa-attestation-token",
 		},
-		State: "waiting",
+		Status: "waiting",
 	}
 
 	expectedSessionURI := testSessionURI
@@ -129,7 +106,7 @@ func TestChallengeResponseConfig_NewSession_server_chosen_nonce_ok(t *testing.T)
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "4", r.URL.Query().Get("nonceSize"))
-		assert.Equal(t, "application/rats-challenge-response-session+json", r.Header.Get("Accept"))
+		assert.Equal(t, "application/vnd.veraison.challenge-response-session+json", r.Header.Get("Accept"))
 
 		w.Header().Set("Location", expectedSessionURI)
 		w.WriteHeader(http.StatusCreated)
@@ -137,7 +114,7 @@ func TestChallengeResponseConfig_NewSession_server_chosen_nonce_ok(t *testing.T)
 		require.Nil(t, e)
 	})
 
-	client, teardown := newTestingHTTPClient(h)
+	client, teardown := common.NewTestingHTTPClient(h)
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
@@ -161,16 +138,16 @@ func TestChallengeResponseConfig_NewSession_relative_location_ok(t *testing.T) {
 	"accept": [
 		"application/psa-attestation-token"
 	],
-	"state": "waiting"
+	"status": "waiting"
 }`
 
-	expectedBody := &RatsChallengeResponseSession{
+	expectedBody := &ChallengeResponseSession{
 		Nonce:  testNonce,
 		Expiry: "2030-10-12T07:20:50.52Z",
 		Accept: []string{
 			"application/psa-attestation-token",
 		},
-		State: "waiting",
+		Status: "waiting",
 	}
 
 	expectedSessionURI := testSessionURI
@@ -178,7 +155,7 @@ func TestChallengeResponseConfig_NewSession_relative_location_ok(t *testing.T) {
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "3q2+7w==", r.URL.Query().Get("nonce"))
-		assert.Equal(t, "application/rats-challenge-response-session+json", r.Header.Get("Accept"))
+		assert.Equal(t, "application/vnd.veraison.challenge-response-session+json", r.Header.Get("Accept"))
 
 		w.Header().Set("Location", relativeSessionURI)
 		w.WriteHeader(http.StatusCreated)
@@ -186,7 +163,7 @@ func TestChallengeResponseConfig_NewSession_relative_location_ok(t *testing.T) {
 		require.Nil(t, e)
 	})
 
-	client, teardown := newTestingHTTPClient(h)
+	client, teardown := common.NewTestingHTTPClient(h)
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
@@ -283,7 +260,7 @@ func TestChallengeResponseConfig_ChallengeResponse_sync_ok(t *testing.T) {
     "accept": [
         "application/psa-attestation-token"
     ],
-    "state": "complete",
+    "status": "complete",
 	"evidence": {
         "type": "application/psa-attestation-token",
         "value": "ZXZpZGVuY2U="
@@ -302,7 +279,7 @@ func TestChallengeResponseConfig_ChallengeResponse_sync_ok(t *testing.T) {
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "application/rats-challenge-response-session+json", r.Header.Get("Accept"))
+		assert.Equal(t, "application/vnd.veraison.challenge-response-session+json", r.Header.Get("Accept"))
 		assert.Equal(t, mediaType, r.Header.Get("Content-Type"))
 		defer r.Body.Close()
 		reqBody, _ := ioutil.ReadAll(r.Body)
@@ -313,7 +290,7 @@ func TestChallengeResponseConfig_ChallengeResponse_sync_ok(t *testing.T) {
 		require.Nil(t, e)
 	})
 
-	client, teardown := newTestingHTTPClient(h)
+	client, teardown := common.NewTestingHTTPClient(h)
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
@@ -328,27 +305,6 @@ func TestChallengeResponseConfig_ChallengeResponse_sync_ok(t *testing.T) {
 	assert.JSONEq(t, expectedResult, string(actualResult))
 }
 
-func TestChallengeResponseConfig_deleteSession_ok(t *testing.T) {
-	sessionURI := testSessionURI
-
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodDelete, r.Method)
-
-		w.WriteHeader(http.StatusNoContent)
-	})
-
-	client, teardown := newTestingHTTPClient(h)
-	defer teardown()
-
-	cfg := ChallengeResponseConfig{
-		Client: client,
-	}
-
-	err := cfg.deleteSession(sessionURI)
-
-	assert.Nil(t, err)
-}
-
 func TestChallengeResponseConfig_pollForAttestationResult_ok(t *testing.T) {
 	sessionBody := `
 {
@@ -357,7 +313,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_ok(t *testing.T) {
     "accept": [
         "application/psa-attestation-token"
     ],
-    "state": "complete",
+    "status": "complete",
 	"evidence": {
         "type": "application/psa-attestation-token",
         "value": "ZXZpZGVuY2U="
@@ -378,7 +334,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_ok(t *testing.T) {
 		require.Nil(t, e)
 	})
 
-	client, teardown := newTestingHTTPClient(h)
+	client, teardown := common.NewTestingHTTPClient(h)
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
@@ -401,7 +357,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_failed_state(t *testin
     "accept": [
         "application/psa-attestation-token"
     ],
-    "state": "failed",
+    "status": "failed",
 	"evidence": {
         "type": "application/psa-attestation-token",
         "value": "ZXZpZGVuY2U="
@@ -418,7 +374,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_failed_state(t *testin
 		require.Nil(t, e)
 	})
 
-	client, teardown := newTestingHTTPClient(h)
+	client, teardown := common.NewTestingHTTPClient(h)
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
@@ -438,7 +394,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_unexpected_state(t *te
     "accept": [
         "application/psa-attestation-token"
     ],
-    "state": "bonkers",
+    "status": "bonkers",
 	"evidence": {
         "type": "application/psa-attestation-token",
         "value": "ZXZpZGVuY2U="
@@ -455,7 +411,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_unexpected_state(t *te
 		require.Nil(t, e)
 	})
 
-	client, teardown := newTestingHTTPClient(h)
+	client, teardown := common.NewTestingHTTPClient(h)
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
@@ -468,7 +424,6 @@ func TestChallengeResponseConfig_pollForAttestationResult_unexpected_state(t *te
 }
 
 func TestChallengeResponseConfig_pollForAttestationResult_exhaustion(t *testing.T) {
-
 	sessionBody := `
 {
     "nonce": "3q2+7w==",
@@ -476,7 +431,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_exhaustion(t *testing.
     "accept": [
         "application/psa-attestation-token"
     ],
-    "state": "processing",
+    "status": "processing",
 	"evidence": {
         "type": "application/psa-attestation-token",
         "value": "ZXZpZGVuY2U="
@@ -493,7 +448,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_exhaustion(t *testing.
 		require.Nil(t, e)
 	})
 
-	client, teardown := newTestingHTTPClient(h)
+	client, teardown := common.NewTestingHTTPClient(h)
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
@@ -514,7 +469,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_corrupted_resource(t *
     "accept": [
         "application/psa-attestation-token"
     ],
-    "state": "processing",
+    "status": "processing",
 	"evidence": {
         "type": "application/psa-attestation-token",
         "value": "ZXZpZGVuY2U="
@@ -530,7 +485,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_corrupted_resource(t *
 		require.Nil(t, e)
 	})
 
-	client, teardown := newTestingHTTPClient(h)
+	client, teardown := common.NewTestingHTTPClient(h)
 	defer teardown()
 
 	cfg := ChallengeResponseConfig{
@@ -551,4 +506,92 @@ func TestChallengeResponseConfig_ChallengeResponse_bad_config_nil_client(t *test
 	_, err := cfg.ChallengeResponse(testEvidence, "application/*", testSessionURI)
 
 	assert.EqualError(t, err, "bad configuration: nil client")
+}
+
+func TestChallengeResponseConfig_Run_async_ok(t *testing.T) {
+	sessionState := []string{`
+{
+    "nonce": "3q2+7w==",
+    "expiry": "2030-10-12T07:20:50.52Z",
+    "accept": [
+        "application/psa-attestation-token"
+    ],
+    "status": "waiting"
+}`, `
+{
+    "nonce": "3q2+7w==",
+    "expiry": "2030-10-12T07:20:50.52Z",
+    "accept": [
+        "application/psa-attestation-token"
+    ],
+    "status": "processing",
+	"evidence": {
+        "type": "application/psa-attestation-token",
+        "value": "ZXZpZGVuY2U="
+    }
+}`, `
+{
+    "nonce": "3q2+7w==",
+    "expiry": "2030-10-12T07:20:50.52Z",
+    "accept": [
+        "application/psa-attestation-token"
+    ],
+    "status": "complete",
+	"evidence": {
+        "type": "application/psa-attestation-token",
+        "value": "ZXZpZGVuY2U="
+    },
+	"result": {
+        "is_valid": true,
+		"claims": {}
+    }
+}`,
+	}
+
+	iter := 1
+
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch iter {
+		case 1:
+			assert.Equal(t, http.MethodPost, r.Method)
+
+			w.Header().Set("Location", testRelSessionURI)
+			w.WriteHeader(http.StatusCreated)
+			_, e := w.Write([]byte(sessionState[0]))
+			require.Nil(t, e)
+
+			iter++
+		case 2:
+			assert.Equal(t, http.MethodPost, r.Method)
+
+			w.WriteHeader(http.StatusAccepted)
+			_, e := w.Write([]byte(sessionState[1]))
+			require.Nil(t, e)
+
+			iter++
+		case 3:
+			assert.Equal(t, http.MethodGet, r.Method)
+
+			w.WriteHeader(http.StatusOK)
+			_, e := w.Write([]byte(sessionState[2]))
+			require.Nil(t, e)
+		}
+	})
+
+	client, teardown := common.NewTestingHTTPClient(h)
+	defer teardown()
+
+	cfg := ChallengeResponseConfig{
+		Nonce:           testNonce,
+		NewSessionURI:   testNewSessionURI,
+		EvidenceBuilder: testEvidenceBuilder{},
+		Client:          client,
+	}
+
+	expectedResult := `{ "is_valid": true, "claims": {} }`
+
+	result, err := cfg.Run()
+
+	assert.NoError(t, err)
+	assert.JSONEq(t, expectedResult, string(result))
 }
