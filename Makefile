@@ -4,7 +4,8 @@ SHELL := /bin/bash
 
 GO111MODULE := on
 
-GOPKG := github.com/veraison/apiclient
+GOPKG := github.com/veraison/apiclient/verification
+GOPKG += github.com/veraison/apiclient/provisioning
 
 GOLINT ?= golangci-lint
 

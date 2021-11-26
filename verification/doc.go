@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /*
-Package apiclient implements the interaction model described in
-https://github.com/veraison/veraison/tree/main/docs/api
+Package apiclient/verification implements the interaction model described in
+https://github.com/veraison/veraison/tree/main/docs/api/challenge-response
 
 Challenge-Response, atomic operation
 
@@ -121,4 +121,4 @@ success, will return the Attestation Result:
 
 	attestationResult, err := cfg.ChallengeResponse(evidence, mediaType, sessionURI)
 */
-package apiclient
+package verification

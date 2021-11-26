@@ -1,7 +1,7 @@
 // Copyright 2021 Contributors to the Veraison project.
 // SPDX-License-Identifier: Apache-2.0
 
-package apiclient
+package verification
 
 // EvidenceBuilder is the interface between the challenge-response protocol FSM
 // and the user. The user is given a nonce and the list of acceptable Evidence
