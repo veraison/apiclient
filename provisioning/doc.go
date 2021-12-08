@@ -33,7 +33,7 @@ server instead of letting it expire:
 
 Then the Run method is invoked on the instantiated SubmitConfig object to
 trigger the protocol FSM, hiding any details about the synchronus / async nature
-of the underlying exchange.  The used must supply the byte buffer containing the
+of the underlying exchange.  The user must supply the byte buffer containing the
 serialized endorsement, and the associated media type:
 
 	err := cfg.Run(corimBuf, "application/corim+cbor")
