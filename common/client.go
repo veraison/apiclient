@@ -13,7 +13,6 @@ import (
 // Client holds configuration data associated with the HTTP(s) session
 type Client struct {
 	HTTPClient http.Client
-	// TODO(tho) API tokens and client credentials
 }
 
 // NewClient instantiates a new Client
