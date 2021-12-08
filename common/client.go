@@ -15,7 +15,7 @@ type Client struct {
 	HTTPClient http.Client
 }
 
-// NewClient instantiates a new Client
+// NewClient instantiates a new Client with a fixed 5s timeout
 func NewClient() *Client {
 	return &Client{
 		HTTPClient: http.Client{
