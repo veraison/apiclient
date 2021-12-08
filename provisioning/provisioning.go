@@ -25,13 +25,17 @@ type SubmitSession struct {
 	FailureReason *string `json:"failure-reason"`
 }
 
+// SubmitConfig holds the context of an endorsement submission API session
 type SubmitConfig struct {
 	Client        *common.Client // HTTP(s) client connection configuration
 	SubmitURI     string         // URI of the /submit endpoint
 	DeleteSession bool           // explicitly DELETE the session object after we are done
 }
 
-// Run implements the endorsement submission API
+// Run implements the endorsement submission API.  If the session does not
+// complete synchronously, this call will block until either the session state
+// moves out of the processing state, or the MaxAttempts*PollPeriod threshold is
+// hit.
 func (cfg SubmitConfig) Run(endorsement []byte, mediaType string) error {
 	if err := cfg.check(); err != nil {
 		return err
