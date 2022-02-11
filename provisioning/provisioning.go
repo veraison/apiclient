@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/veraison/apiclient/common"
@@ -30,6 +31,29 @@ type SubmitConfig struct {
 	Client        *common.Client // HTTP(s) client connection configuration
 	SubmitURI     string         // URI of the /submit endpoint
 	DeleteSession bool           // explicitly DELETE the session object after we are done
+}
+
+// SetClient sets the HTTP(s) client connection configuration
+func (cfg *SubmitConfig) SetClient(client *common.Client) error {
+	if client == nil {
+		return fmt.Errorf("no client supplied")
+	}
+	cfg.Client = client
+	return nil
+}
+
+// SetSubmitURI sets the URI Parameter
+func (cfg *SubmitConfig) SetSubmitURI(uri string) error {
+	u, err := url.Parse(uri)
+	if err != nil || !u.IsAbs() {
+		return fmt.Errorf("malformed URI")
+	}
+	return nil
+}
+
+// SetDeleteSession sets the DELETE of session object after it is complete
+func (cfg *SubmitConfig) SetDeleteSession(session bool) {
+	cfg.DeleteSession = session
 }
 
 // Run implements the endorsement submission API.  If the session does not
