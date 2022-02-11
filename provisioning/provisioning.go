@@ -36,7 +36,7 @@ type SubmitConfig struct {
 // SetClient sets the HTTP(s) client connection configuration
 func (cfg *SubmitConfig) SetClient(client *common.Client) error {
 	if client == nil {
-		return fmt.Errorf("no client supplied")
+		return errors.New("no client supplied")
 	}
 	cfg.Client = client
 	return nil
