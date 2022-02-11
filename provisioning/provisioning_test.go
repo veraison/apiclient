@@ -42,7 +42,7 @@ func TestSubmitConfig_SetClient_ok(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestSubmitConfig_SetClient_nok(t *testing.T) {
+func TestSubmitConfig_SetClient_nil_client(t *testing.T) {
 	tv := SubmitConfig{}
 	expectedErr := `no client supplied`
 	err := tv.SetClient(nil)
@@ -55,7 +55,7 @@ func TestSubmitConfig_SetSubmitURI_ok(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestSubmitConfig_SetSubmitURI_nok(t *testing.T) {
+func TestSubmitConfig_SetSubmitURI_not_absolute(t *testing.T) {
 	tv := SubmitConfig{}
 	expectedErr := `uri is not absolute`
 	err := tv.SetSubmitURI("veraison.example/endorsement-provisioning/v1/submit")
