@@ -49,7 +49,7 @@ func (cfg *SubmitConfig) SetSubmitURI(uri string) error {
 		return fmt.Errorf("malformed URI: %w", err)
 	}
 	if !u.IsAbs() {
-		return fmt.Errorf("uri is not absolute")
+		return errors.New("uri is not absolute")
 	}
 	cfg.SubmitURI = uri
 	return nil
