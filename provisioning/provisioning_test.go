@@ -38,7 +38,6 @@ func TestSubmitConfig_check_no_submit_uri(t *testing.T) {
 func TestSubmitConfig_set_client_ok(t *testing.T) {
 	tv := SubmitConfig{}
 	client := common.NewClient()
-
 	err := tv.SetClient(client)
 	assert.NoError(t, err)
 }
@@ -59,13 +58,8 @@ func TestSubmitConfig_set_URI_ok(t *testing.T) {
 func TestSubmitConfig_set_URI_nok(t *testing.T) {
 	tv := SubmitConfig{}
 	expectedErr := `uri is not absolute`
-	err := tv.SetSubmitURI("blabla")
+	err := tv.SetSubmitURI("veraison.example/endorsement-provisioning/v1/submit")
 	assert.EqualError(t, err, expectedErr)
-}
-
-func TestSubmitConfig_set_Delete_session_ok(t *testing.T) {
-	tv := SubmitConfig{}
-	tv.SetDeleteSession(true)
 }
 
 func TestSubmitConfig_Run_no_submit_uri(t *testing.T) {
