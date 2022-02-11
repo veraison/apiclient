@@ -58,7 +58,7 @@ func TestSubmitConfig_set_URI_ok(t *testing.T) {
 
 func TestSubmitConfig_set_URI_nok(t *testing.T) {
 	tv := SubmitConfig{}
-	expectedErr := `malformed URI`
+	expectedErr := `uri is not absolute`
 	err := tv.SetSubmitURI("blabla")
 	assert.EqualError(t, err, expectedErr)
 }

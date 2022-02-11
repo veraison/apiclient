@@ -45,13 +45,17 @@ func (cfg *SubmitConfig) SetClient(client *common.Client) error {
 // SetSubmitURI sets the URI Parameter
 func (cfg *SubmitConfig) SetSubmitURI(uri string) error {
 	u, err := url.Parse(uri)
-	if err != nil || !u.IsAbs() {
-		return fmt.Errorf("malformed URI")
+	if err != nil {
+		return fmt.Errorf("malformed URI: %w", err)
 	}
+	if !u.IsAbs() {
+		return fmt.Errorf("uri is not absolute")
+	}
+	cfg.SubmitURI = uri
 	return nil
 }
 
-// SetDeleteSession sets the DELETE of session object after it is complete
+// SetDeleteSession instruct to DELETE the session object after it is complete
 func (cfg *SubmitConfig) SetDeleteSession(session bool) {
 	cfg.DeleteSession = session
 }
