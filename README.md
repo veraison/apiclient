@@ -1,6 +1,6 @@
 # APIclient
 
-The `apiclient` package provides a golang implementation of the client side of the [Veraison API](https://github.com/veraison/veraison/tree/main/docs/api). 
+The `apiclient` package provides a golang implementation of the client side of the [Veraison API](https://github.com/veraison/docs/tree/main/api). 
 
 ## Resources
 
