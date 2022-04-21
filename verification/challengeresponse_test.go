@@ -32,6 +32,67 @@ func (testEvidenceBuilder) BuildEvidence(
 	return testEvidence, "application/my-evidence-media-type", nil
 }
 
+func TestChallengeResponseConfig_SetNonce_ok(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	err := cfg.SetNonce(testNonce)
+	assert.NoError(t, err)
+}
+
+func TestChallengeResponseConfig_SetNonce_nil_nonce(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	expectedErr := `no Nonce supplied`
+	var nonce []byte
+	err := cfg.SetNonce(nonce)
+	assert.EqualError(t, err, expectedErr)
+}
+
+func TestChallengeResponseConfig_SetClient_ok(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	client := common.NewClient()
+	err := cfg.SetClient(client)
+	assert.NoError(t, err)
+}
+
+func TestChallengeResponseConfig_SetClient_nil_client(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	expectedErr := `no client supplied`
+	err := cfg.SetClient(nil)
+	assert.EqualError(t, err, expectedErr)
+}
+
+func TestChallengeResponseConfig_SetSessionURI_ok(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	err := cfg.SetSessionURI(testSessionURI)
+	assert.NoError(t, err)
+}
+
+func TestChallengeResponseConfig_SetSessionURI_not_absolute(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	expectedErr := `uri is not absolute`
+	err := cfg.SetSessionURI("veraison.example/challenge-response/v1/session/1")
+	assert.EqualError(t, err, expectedErr)
+}
+
+func TestChallengeResponseConfig_SetSessionURI_bad_uri(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	expectedErr := `malformed URI`
+	err := cfg.SetSessionURI("http://veraison.example:80challenge-response/v1/session/1")
+	assert.EqualError(t, err, expectedErr)
+}
+
+func TestChallengeResponseConfig_SetEvidenceBuilder_ok(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	err := cfg.SetEvidenceBuilder(testEvidenceBuilder{})
+	assert.NoError(t, err)
+}
+
+func TestChallengeResponseConfig_SetEvidenceBuilder_no_ok(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	expectedErr := `no evidence builder supplied`
+	err := cfg.SetEvidenceBuilder(nil)
+	assert.EqualError(t, err, expectedErr)
+}
+
 func TestChallengeResponseConfig_NewSession_ok(t *testing.T) {
 	newSessionCreatedBody := `
 {

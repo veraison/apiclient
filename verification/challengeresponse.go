@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/veraison/apiclient/common"
@@ -42,6 +43,51 @@ type ChallengeResponseSession struct {
 	Status   string          `json:"status"`
 	Evidence Blob            `json:"evidence"`
 	Result   json.RawMessage `json:"result"`
+}
+
+// SetNonce sets the Nonce supplied by the user
+func (cfg *ChallengeResponseConfig) SetNonce(nonce []byte) error {
+	if len(nonce) == 0 {
+		return errors.New("no Nonce supplied")
+	}
+	cfg.Nonce = nonce
+	return nil
+}
+
+// SetEvidenceBuilder sets the Evidence Builder callback supplied by the user
+func (cfg *ChallengeResponseConfig) SetEvidenceBuilder(evidenceBuilder EvidenceBuilder) error {
+	if evidenceBuilder == nil {
+		return errors.New("no evidence builder supplied")
+	}
+	cfg.EvidenceBuilder = evidenceBuilder
+	return nil
+}
+
+// SetSessionURI sets the New Session URI supplied by the user
+func (cfg *ChallengeResponseConfig) SetSessionURI(uri string) error {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return fmt.Errorf("malformed URI")
+	}
+	if !u.IsAbs() {
+		return errors.New("uri is not absolute")
+	}
+	cfg.NewSessionURI = uri
+	return nil
+}
+
+// SetClient sets the HTTP(s) client connection configuration
+func (cfg *ChallengeResponseConfig) SetClient(client *common.Client) error {
+	if client == nil {
+		return errors.New("no client supplied")
+	}
+	cfg.Client = client
+	return nil
+}
+
+// SetDeleteSession instructs to DELETE the session object after it is complete
+func (cfg *ChallengeResponseConfig) SetDeleteSession(session bool) {
+	cfg.DeleteSession = session
 }
 
 // Run implements the challenge-response protocol FSM invoking the user
