@@ -51,7 +51,7 @@ or just the size of a nonce to be provided by the server side:
 The user can also supply a custom Client object, for example to appropriately
 configure the underlying TLS transport:
 
-    cfg.Client = &Client{
+	cfg.Client = &Client{
 		HTTPClient: http.Client{
 			Transport: myTLSConfig,
 		}
@@ -60,7 +60,7 @@ configure the underlying TLS transport:
 The user can also request to explicitly delete the session resource at the
 server instead of letting it expire:
 
-    cfg.DeleteSession = true
+	cfg.DeleteSession = true
 
 Then the Run method is invoked on the instantiated ChallengeReponseConfig
 object to trigger the protocol FSM, hiding any details about the synchronus /
