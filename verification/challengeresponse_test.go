@@ -15,12 +15,14 @@ import (
 
 var (
 	testNonce    []byte = []byte{0xde, 0xad, 0xbe, 0xef}
+	testNonceSz  uint   = 32
 	testEvidence []byte = []byte{0x0e, 0x0d, 0x0e}
 
 	testBaseURI       = "http://veraison.example"
 	testRelSessionURI = "/challenge-response/v1/session/1"
 	testSessionURI    = testBaseURI + testRelSessionURI
 	testNewSessionURI = testBaseURI + "/challenge-response/v1/newSession"
+	testBadURI        = `http://veraison.example:80challenge-response/v1/session/1`
 )
 
 type testEvidenceBuilder struct{}
@@ -40,12 +42,24 @@ func TestChallengeResponseConfig_SetNonce_ok(t *testing.T) {
 
 func TestChallengeResponseConfig_SetNonce_nil_nonce(t *testing.T) {
 	cfg := ChallengeResponseConfig{}
-	expectedErr := `no Nonce supplied`
+	expectedErr := `no nonce supplied`
 	var nonce []byte
 	err := cfg.SetNonce(nonce)
 	assert.EqualError(t, err, expectedErr)
 }
 
+func TestChallengeResponseConfig_SetNonceSz_ok(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	err := cfg.SetNonceSz(testNonceSz)
+	assert.NoError(t, err)
+}
+
+func TestChallengeResponseConfig_SetNonceSz_zero_noncesz(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	expectedErr := `zero nonce size supplied`
+	err := cfg.SetNonceSz(0)
+	assert.EqualError(t, err, expectedErr)
+}
 func TestChallengeResponseConfig_SetClient_ok(t *testing.T) {
 	cfg := ChallengeResponseConfig{}
 	client := common.NewClient()
@@ -68,15 +82,15 @@ func TestChallengeResponseConfig_SetSessionURI_ok(t *testing.T) {
 
 func TestChallengeResponseConfig_SetSessionURI_not_absolute(t *testing.T) {
 	cfg := ChallengeResponseConfig{}
-	expectedErr := `uri is not absolute`
+	expectedErr := `the supplied session URI is not in absolute form`
 	err := cfg.SetSessionURI("veraison.example/challenge-response/v1/session/1")
 	assert.EqualError(t, err, expectedErr)
 }
 
 func TestChallengeResponseConfig_SetSessionURI_bad_uri(t *testing.T) {
 	cfg := ChallengeResponseConfig{}
-	expectedErr := `malformed URI`
-	err := cfg.SetSessionURI("http://veraison.example:80challenge-response/v1/session/1")
+	expectedErr := `malformed session URI: parse "http://veraison.example:80challenge-response/v1/session/1": invalid port ":80challenge-response" after host`
+	err := cfg.SetSessionURI(testBadURI)
 	assert.EqualError(t, err, expectedErr)
 }
 

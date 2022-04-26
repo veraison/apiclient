@@ -48,9 +48,18 @@ type ChallengeResponseSession struct {
 // SetNonce sets the Nonce supplied by the user
 func (cfg *ChallengeResponseConfig) SetNonce(nonce []byte) error {
 	if len(nonce) == 0 {
-		return errors.New("no Nonce supplied")
+		return errors.New("no nonce supplied")
 	}
 	cfg.Nonce = nonce
+	return nil
+}
+
+// SetNonceSz sets the Nonce Size supplied by the user
+func (cfg *ChallengeResponseConfig) SetNonceSz(noncesz uint) error {
+	if noncesz == 0 {
+		return errors.New("zero nonce size supplied")
+	}
+	cfg.NonceSz = noncesz
 	return nil
 }
 
@@ -67,10 +76,10 @@ func (cfg *ChallengeResponseConfig) SetEvidenceBuilder(evidenceBuilder EvidenceB
 func (cfg *ChallengeResponseConfig) SetSessionURI(uri string) error {
 	u, err := url.Parse(uri)
 	if err != nil {
-		return fmt.Errorf("malformed URI")
+		return fmt.Errorf("malformed session URI: %w", err)
 	}
 	if !u.IsAbs() {
-		return errors.New("uri is not absolute")
+		return errors.New("the supplied session URI is not in absolute form")
 	}
 	cfg.NewSessionURI = uri
 	return nil
@@ -85,9 +94,9 @@ func (cfg *ChallengeResponseConfig) SetClient(client *common.Client) error {
 	return nil
 }
 
-// SetDeleteSession instructs to DELETE the session object after it is complete
-func (cfg *ChallengeResponseConfig) SetDeleteSession(session bool) {
-	cfg.DeleteSession = session
+// SetDeleteSession sets the DeleteSession parameter using supplied val
+func (cfg *ChallengeResponseConfig) SetDeleteSession(val bool) {
+	cfg.DeleteSession = val
 }
 
 // Run implements the challenge-response protocol FSM invoking the user
