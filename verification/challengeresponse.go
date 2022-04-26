@@ -54,12 +54,12 @@ func (cfg *ChallengeResponseConfig) SetNonce(nonce []byte) error {
 	return nil
 }
 
-// SetNonceSz sets the Nonce Size supplied by the user
-func (cfg *ChallengeResponseConfig) SetNonceSz(noncesz uint) error {
-	if noncesz == 0 {
+// SetNonceSz sets the nonce size supplied by the user
+func (cfg *ChallengeResponseConfig) SetNonceSz(nonceSz uint) error {
+	if nonceSz == 0 {
 		return errors.New("zero nonce size supplied")
 	}
-	cfg.NonceSz = noncesz
+	cfg.NonceSz = nonceSz
 	return nil
 }
 
@@ -94,7 +94,7 @@ func (cfg *ChallengeResponseConfig) SetClient(client *common.Client) error {
 	return nil
 }
 
-// SetDeleteSession sets the DeleteSession parameter using supplied val
+// SetDeleteSession sets the DeleteSession parameter using the supplied val
 func (cfg *ChallengeResponseConfig) SetDeleteSession(val bool) {
 	cfg.DeleteSession = val
 }
