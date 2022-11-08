@@ -158,8 +158,8 @@ func (cfg ChallengeResponseConfig) ChallengeResponse(
 	// if requested, explicitly call DELETE on the session resource
 
 	if cfg.DeleteSession {
-		if err = cfg.Client.DeleteResource(uri); err != nil {
-			log.Printf("DELETE %s failed: %v", uri, err)
+		if err2 := cfg.Client.DeleteResource(uri); err2 != nil {
+			log.Printf("DELETE %s failed: %v", uri, err2)
 		}
 	}
 
@@ -196,7 +196,7 @@ func (cfg ChallengeResponseConfig) newSession() (*ChallengeResponseSession, stri
 
 // newSessionRequest creates the POST request to the /newSession endpoint
 func (cfg ChallengeResponseConfig) newSessionRequest() (*http.Response, error) {
-	req, err := http.NewRequest("POST", cfg.NewSessionURI, nil)
+	req, err := http.NewRequest("POST", cfg.NewSessionURI, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("building request for new session: %w", err)
 	}

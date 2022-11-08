@@ -25,7 +25,7 @@ func NewClient() *Client {
 }
 
 func (c Client) DeleteResource(uri string) error {
-	req, err := http.NewRequest("DELETE", uri, nil)
+	req, err := http.NewRequest("DELETE", uri, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("DELETE %q, request creation failed: %w", uri, err)
 	}
