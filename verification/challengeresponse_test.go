@@ -4,7 +4,7 @@
 package verification
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 
@@ -357,7 +357,7 @@ func TestChallengeResponseConfig_ChallengeResponse_sync_ok(t *testing.T) {
 		assert.Equal(t, "application/vnd.veraison.challenge-response-session+json", r.Header.Get("Accept"))
 		assert.Equal(t, mediaType, r.Header.Get("Content-Type"))
 		defer r.Body.Close()
-		reqBody, _ := ioutil.ReadAll(r.Body)
+		reqBody, _ := io.ReadAll(r.Body)
 		assert.Equal(t, evidence, reqBody)
 
 		w.WriteHeader(http.StatusOK)
@@ -669,4 +669,93 @@ func TestChallengeResponseConfig_Run_async_ok(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.JSONEq(t, expectedResult, string(result))
+}
+
+func TestChallengeResponseConfig_Run_async_with_explicit_delete_failed(t *testing.T) {
+	sessionState := []string{`
+{
+    "nonce": "3q2+7w==",
+    "expiry": "2030-10-12T07:20:50.52Z",
+    "accept": [
+        "application/psa-attestation-token"
+    ],
+    "status": "waiting"
+}`, `
+{
+    "nonce": "3q2+7w==",
+    "expiry": "2030-10-12T07:20:50.52Z",
+    "accept": [
+        "application/psa-attestation-token"
+    ],
+    "status": "processing",
+    "evidence": {
+        "type": "application/psa-attestation-token",
+        "value": "ZXZpZGVuY2U="
+    }
+}`, `
+{
+    "nonce": "3q2+7w==",
+    "expiry": "2030-10-12T07:20:50.52Z",
+    "accept": [
+        "application/psa-attestation-token"
+    ],
+    "status": "failed",
+    "evidence": {
+        "type": "application/psa-attestation-token",
+        "value": "ZXZpZGVuY2U="
+    }
+}`,
+	}
+
+	iter := 1
+
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch iter {
+		case 1:
+			assert.Equal(t, http.MethodPost, r.Method)
+
+			w.Header().Set("Location", testRelSessionURI)
+			w.WriteHeader(http.StatusCreated)
+			_, e := w.Write([]byte(sessionState[0]))
+			require.Nil(t, e)
+
+			iter++
+		case 2:
+			assert.Equal(t, http.MethodPost, r.Method)
+
+			w.WriteHeader(http.StatusAccepted)
+			_, e := w.Write([]byte(sessionState[1]))
+			require.Nil(t, e)
+
+			iter++
+		case 3:
+			assert.Equal(t, http.MethodGet, r.Method)
+
+			w.WriteHeader(http.StatusOK)
+			_, e := w.Write([]byte(sessionState[2]))
+			require.Nil(t, e)
+
+			iter++
+		case 4:
+			assert.Equal(t, http.MethodDelete, r.Method)
+
+			w.WriteHeader(http.StatusOK)
+		}
+	})
+
+	client, teardown := common.NewTestingHTTPClient(h)
+	defer teardown()
+
+	cfg := ChallengeResponseConfig{
+		Nonce:           testNonce,
+		NewSessionURI:   testNewSessionURI,
+		EvidenceBuilder: testEvidenceBuilder{},
+		Client:          client,
+		DeleteSession:   true,
+	}
+
+	result, err := cfg.Run()
+
+	assert.EqualError(t, err, "session resource in failed state")
+	assert.Nil(t, result)
 }
