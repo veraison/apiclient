@@ -71,7 +71,7 @@ async nature of the underlying exchange:
 On success, the Attestation Result, is returned as a JSON string:
 
 	if err == nil {
-		fmt.Println("%s", string(attestationResult))
+		fmt.Println(string(attestationResult))
 	}
 
 Challenge-Response, split operation
