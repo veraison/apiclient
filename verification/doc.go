@@ -5,7 +5,7 @@
 Package apiclient/verification implements the interaction model described in
 https://github.com/veraison/veraison/tree/main/docs/api/challenge-response
 
-Challenge-Response, atomic operation
+# Challenge-Response, atomic operation
 
 Using this mode of operation the whole API client exchange is handled
 atomically through a single invocation of the Run() method.
@@ -29,7 +29,6 @@ EvidenceBuilder interface:
 
 		return nil, "", errors.New("no match on accepted media types")
 	}
-
 
 The user then creates a ChallengeResponseConfig object supplying the callback
 and either an explicit nonce:
@@ -74,7 +73,7 @@ On success, the Attestation Result, is returned as a JSON string:
 		fmt.Println(string(attestationResult))
 	}
 
-Challenge-Response, split operation
+# Challenge-Response, split operation
 
 Using this mode of operation the client is responsible for dealing with each
 API call separately, invoking the right API method at the right time and place.
