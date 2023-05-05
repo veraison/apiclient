@@ -5,7 +5,7 @@
 Package apiclient/provisioning implements the interaction model described in
 https://github.com/veraison/veraison/tree/main/docs/api/endorsement-provisioning
 
-Submit
+# Submit
 
 The whole API client exchange is handled via a single invocation of the Run()
 method.

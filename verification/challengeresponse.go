@@ -14,7 +14,26 @@ import (
 	"time"
 
 	"github.com/veraison/apiclient/common"
+	"github.com/veraison/cmw"
 )
+
+type CmwWrap int
+
+const (
+	NoWrap CmwWrap = iota
+	WrapCBOR
+	WrapJSON
+)
+
+type cmwInfo struct {
+	mt string
+	s  cmw.Serialization
+}
+
+var cmwInfoMap = map[CmwWrap]cmwInfo{
+	WrapCBOR: {mt: "application/vnd.veraison.cmw+cbor", s: cmw.CBORArray},
+	WrapJSON: {mt: "application/vnd.veraison.cmw+json", s: cmw.JSONArray},
+}
 
 // ChallengeResponseConfig holds the configuration for one or more
 // challenge-response exchanges
@@ -25,6 +44,7 @@ type ChallengeResponseConfig struct {
 	NewSessionURI   string          // URI of the "/newSession" endpoint
 	Client          *common.Client  // HTTP(s) client connection configuration
 	DeleteSession   bool            // explicitly DELETE the session object after we are done
+	Wrap            CmwWrap         // when set, wrap the supplied evidence as a Conceptual Message Wrapper(CMW)
 }
 
 // Blob wraps a base64 encoded value together with its media type
@@ -99,6 +119,24 @@ func (cfg *ChallengeResponseConfig) SetDeleteSession(val bool) {
 	cfg.DeleteSession = val
 }
 
+func isValidCmwWrap(val CmwWrap) bool {
+	switch val {
+	case NoWrap, WrapCBOR, WrapJSON:
+		return true
+	default:
+		return false
+	}
+}
+
+// SetWrap sets the Wrap parameter using the supplied val
+func (cfg *ChallengeResponseConfig) SetWrap(val CmwWrap) error {
+	if isValidCmwWrap(val) {
+		cfg.Wrap = val
+		return nil
+	}
+	return fmt.Errorf("invalid CMW Wrap: %d", val)
+}
+
 // Run implements the challenge-response protocol FSM invoking the user
 // callback. On success, the received Attestation Result is returned.
 func (cfg ChallengeResponseConfig) Run() ([]byte, error) {
@@ -121,7 +159,31 @@ func (cfg ChallengeResponseConfig) Run() ([]byte, error) {
 		return nil, fmt.Errorf("evidence generation failed: %w", err)
 	}
 
+	if cfg.Wrap != NoWrap {
+		evidence, mediaType, err = cfg.wrapEvInCMW(evidence, mediaType)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return cfg.ChallengeResponse(evidence, mediaType, sessionURI)
+}
+
+func (cfg ChallengeResponseConfig) wrapEvInCMW(evidence []byte, mt string) ([]byte, string, error) {
+	c := &cmw.CMW{}
+	c.SetMediaType(mt)
+	c.SetValue(evidence)
+	c.SetIndicators(cmw.Evidence)
+	cmi, ok := cmwInfoMap[cfg.Wrap]
+	if !ok {
+		return nil, "", fmt.Errorf("unable to get cmw info for Wrap: %d", cfg.Wrap)
+	}
+
+	cm, err := c.Serialize(cmi.s)
+	if err != nil {
+		return nil, "", fmt.Errorf("cmw serialization failed: %w", err)
+	}
+	return cm, cmi.mt, nil
 }
 
 // NewSession runs the first part of the interaction which deals with session

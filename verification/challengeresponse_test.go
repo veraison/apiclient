@@ -4,7 +4,10 @@
 package verification
 
 import (
+	"encoding/base64"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"testing"
 
@@ -14,15 +17,18 @@ import (
 )
 
 var (
-	testNonce    []byte = []byte{0xde, 0xad, 0xbe, 0xef}
-	testNonceSz  uint   = 32
-	testEvidence []byte = []byte{0x0e, 0x0d, 0x0e}
-
-	testBaseURI       = "http://veraison.example"
-	testRelSessionURI = "/challenge-response/v1/session/1"
-	testSessionURI    = testBaseURI + testRelSessionURI
-	testNewSessionURI = testBaseURI + "/challenge-response/v1/newSession"
-	testBadURI        = `http://veraison.example:80challenge-response/v1/session/1`
+	testNonce         []byte = []byte{0xde, 0xad, 0xbe, 0xef}
+	testNonceSz       uint   = 32
+	testEvidence      []byte = []byte{0x0e, 0x0d, 0x0e}
+	testCMWEvCBOR     []byte = []byte{0x83, 0x78, 0x22, 0x61, 0x70, 0x70, 0x6c, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2f, 0x6d, 0x79, 0x2d, 0x65, 0x76, 0x69, 0x64, 0x65, 0x6e, 0x63, 0x65, 0x2d, 0x6d, 0x65, 0x64, 0x69, 0x61, 0x2d, 0x74, 0x79, 0x70, 0x65, 0x43, 0x0e, 0x0d, 0x0e, 0x04}
+	testCMWCtCBOR     string = "application/vnd.veraison.cmw+cbor"
+	testCMWEvJSON     []byte = []byte(`["application/my-evidence-media-type","Dg0O",4]`)
+	testCMWCtJSON     string = "application/vnd.veraison.cmw+json"
+	testBaseURI              = "http://veraison.example"
+	testRelSessionURI        = "/challenge-response/v1/session/1"
+	testSessionURI           = testBaseURI + testRelSessionURI
+	testNewSessionURI        = testBaseURI + "/challenge-response/v1/newSession"
+	testBadURI               = `http://veraison.example:80challenge-response/v1/session/1`
 )
 
 type testEvidenceBuilder struct{}
@@ -154,6 +160,22 @@ func TestChallengeResponseConfig_NewSession_ok(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, expectedSessionURI, actualSessionURI)
 	assert.Equal(t, expectedBody, actualBody)
+}
+
+func TestChallengeResponseConfig_SetCMWWrap_ok(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	err := cfg.SetWrap(WrapCBOR)
+	assert.NoError(t, err)
+	err = cfg.SetWrap(WrapJSON)
+	assert.NoError(t, err)
+}
+
+func TestChallengeResponseConfig_SetCMWWrap_nok(t *testing.T) {
+	cfg := ChallengeResponseConfig{}
+	randomWrap := 57
+	expectedErr := "invalid CMW Wrap: 57"
+	err := cfg.SetWrap(CmwWrap(randomWrap))
+	assert.EqualError(t, err, expectedErr)
 }
 
 func TestChallengeResponseConfig_NewSession_server_chosen_nonce_ok(t *testing.T) {
@@ -758,4 +780,121 @@ func TestChallengeResponseConfig_Run_async_with_explicit_delete_failed(t *testin
 
 	assert.EqualError(t, err, "session resource in failed state")
 	assert.Nil(t, result)
+}
+
+func synthesizeSession(mt string, ev []byte) []string {
+	s := []string{`
+{
+    "nonce": "3q2+7w==",
+    "expiry": "2030-10-12T07:20:50.52Z",
+    "accept": [
+        "application/psa-attestation-token"
+    ],
+    "status": "waiting"
+}`, `
+{
+    "nonce": "3q2+7w==",
+    "expiry": "2030-10-12T07:20:50.52Z",
+    "accept": [
+        "application/psa-attestation-token"
+    ],
+    "status": "processing",
+	"evidence": {
+        "type": "%s",
+        "value": "%s"
+    }
+}`, `
+{
+    "nonce": "3q2+7w==",
+    "expiry": "2030-10-12T07:20:50.52Z",
+    "accept": [
+        "application/psa-attestation-token"
+    ],
+    "status": "complete",
+	"evidence": {
+        "type": "application/vnd.parallaxsecond.key-attestation.tpm",
+        "value": "%s"
+    },
+	"result": {
+        "is_valid": true,
+		"claims": {}
+    }
+}`,
+	}
+	evs := base64.StdEncoding.EncodeToString(ev)
+	s[1] = fmt.Sprintf(s[1], mt, evs)
+	s[2] = fmt.Sprintf(s[2], evs)
+	return s
+}
+
+func TestChallengeResponseConfig_Run_async_CMWWrap(t *testing.T) {
+	tvs := []struct {
+		desc         string
+		wrap         CmwWrap
+		ct           string
+		ev           []byte
+		sessionState []string
+	}{
+		{
+			desc:         "test CBOR",
+			wrap:         WrapCBOR,
+			ct:           testCMWCtCBOR,
+			ev:           testCMWEvCBOR,
+			sessionState: synthesizeSession(testCMWCtCBOR, testCMWEvCBOR),
+		},
+		{
+			desc:         "test JSON",
+			wrap:         WrapJSON,
+			ct:           testCMWCtJSON,
+			ev:           testCMWEvJSON,
+			sessionState: synthesizeSession(testCMWCtJSON, testCMWEvJSON),
+		},
+	}
+	for _, tv := range tvs {
+		iter := 1
+		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch iter {
+			case 1:
+				assert.Equal(t, http.MethodPost, r.Method)
+				w.Header().Set("Location", testRelSessionURI)
+				w.WriteHeader(http.StatusCreated)
+				_, e := w.Write([]byte(tv.sessionState[0]))
+				require.Nil(t, e)
+
+				iter++
+			case 2:
+				assert.Equal(t, http.MethodPost, r.Method)
+				ev, err := ioutil.ReadAll(r.Body)
+				require.Nil(t, err)
+				assert.Equal(t, ev, tv.ev)
+				assert.Equal(t, r.Header.Get("Content-Type"), tv.ct)
+				w.WriteHeader(http.StatusAccepted)
+				_, e := w.Write([]byte(tv.sessionState[1]))
+				require.Nil(t, e)
+
+				iter++
+			case 3:
+				assert.Equal(t, http.MethodGet, r.Method)
+
+				w.WriteHeader(http.StatusOK)
+				_, e := w.Write([]byte(tv.sessionState[2]))
+				require.Nil(t, e)
+			}
+		})
+
+		client, teardown := common.NewTestingHTTPClient(h)
+		defer teardown()
+		cfg := ChallengeResponseConfig{
+			Nonce:           testNonce,
+			NewSessionURI:   testNewSessionURI,
+			EvidenceBuilder: testEvidenceBuilder{},
+			Client:          client,
+			Wrap:            tv.wrap,
+		}
+		expectedResult := `{ "is_valid": true, "claims": {} }`
+
+		result, err := cfg.Run()
+		assert.NoError(t, err)
+		assert.JSONEq(t, expectedResult, string(result))
+	}
 }
