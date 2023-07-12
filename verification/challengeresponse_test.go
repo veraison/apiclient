@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"testing"
 
@@ -864,7 +863,7 @@ func TestChallengeResponseConfig_Run_async_CMWWrap(t *testing.T) {
 				iter++
 			case 2:
 				assert.Equal(t, http.MethodPost, r.Method)
-				ev, err := ioutil.ReadAll(r.Body)
+				ev, err := io.ReadAll(r.Body)
 				require.Nil(t, err)
 				assert.Equal(t, ev, tv.ev)
 				assert.Equal(t, r.Header.Get("Content-Type"), tv.ct)

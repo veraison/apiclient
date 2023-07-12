@@ -30,9 +30,7 @@ func (c Client) DeleteResource(uri string) error {
 		return fmt.Errorf("DELETE %q, request creation failed: %w", uri, err)
 	}
 
-	hc := &c.HTTPClient
-
-	res, err := hc.Do(req)
+	res, err := c.send(req)
 	if err != nil {
 		return err
 	}
@@ -55,6 +53,32 @@ func (c Client) PostResource(body []byte, ct, accept, uri string) (*http.Respons
 	req.Header.Set("Content-Type", ct)
 	req.Header.Set("Accept", accept)
 
+	return c.send(req)
+}
+
+func (c Client) PostEmptyResource(accept, uri string) (*http.Response, error) {
+	req, err := http.NewRequest("POST", uri, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("POST %q, request creation failed: %w", uri, err)
+	}
+
+	req.Header.Set("Accept", accept)
+
+	return c.send(req)
+}
+
+func (c Client) GetResource(accept, uri string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", uri, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("POST %q, request creation failed: %w", uri, err)
+	}
+
+	req.Header.Set("Accept", accept)
+
+	return c.send(req)
+}
+
+func (c Client) send(req *http.Request) (*http.Response, error) {
 	hc := &c.HTTPClient
 
 	res, err := hc.Do(req)
