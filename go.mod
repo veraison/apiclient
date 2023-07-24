@@ -1,8 +1,10 @@
 module github.com/veraison/apiclient
 
-go 1.18
+go 1.19
 
 require (
+	github.com/google/uuid v1.3.0
+	github.com/moogar0880/problems v0.1.1
 	github.com/stretchr/testify v1.8.2
 	github.com/veraison/cmw v0.1.0
 )
