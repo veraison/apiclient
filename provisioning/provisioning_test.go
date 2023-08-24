@@ -74,10 +74,8 @@ func TestSubmitConfig_Run_no_submit_uri(t *testing.T) {
 func TestSubmitConfig_Run_fail_no_server(t *testing.T) {
 	tv := SubmitConfig{SubmitURI: testSubmitURI}
 
-	expectedErr := `submit request failed: Post "http://veraison.example/endorsement-provisioning/v1/submit": dial tcp: lookup veraison.example on 127.0.0.53:53: no such host`
-
 	err := tv.Run(testEndorsement, testEndorsementMediaType)
-	assert.EqualError(t, err, expectedErr)
+	assert.ErrorContains(t, err, "no such host")
 }
 
 func TestSubmitConfig_Run_fail_404_response(t *testing.T) {
