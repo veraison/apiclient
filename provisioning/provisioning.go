@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/veraison/apiclient/auth"
 	"github.com/veraison/apiclient/common"
 )
 
@@ -28,9 +29,10 @@ type SubmitSession struct {
 
 // SubmitConfig holds the context of an endorsement submission API session
 type SubmitConfig struct {
-	Client        *common.Client // HTTP(s) client connection configuration
-	SubmitURI     string         // URI of the /submit endpoint
-	DeleteSession bool           // explicitly DELETE the session object after we are done
+	Client        *common.Client      // HTTP(s) client connection configuration
+	SubmitURI     string              // URI of the /submit endpoint
+	DeleteSession bool                // explicitly DELETE the session object after we are done
+	Auth          auth.IAuthenticator // when set, Auth supplies the Authorization header for requests
 }
 
 // SetClient sets the HTTP(s) client connection configuration
@@ -38,6 +40,11 @@ func (cfg *SubmitConfig) SetClient(client *common.Client) error {
 	if client == nil {
 		return errors.New("no client supplied")
 	}
+
+	if cfg.Auth != nil {
+		client.Auth = cfg.Auth
+	}
+
 	cfg.Client = client
 	return nil
 }
@@ -60,6 +67,14 @@ func (cfg *SubmitConfig) SetDeleteSession(session bool) {
 	cfg.DeleteSession = session
 }
 
+// SetAuth sets the IAuthenticator that will be used
+func (cfg *SubmitConfig) SetAuth(a auth.IAuthenticator) {
+	cfg.Auth = a
+	if cfg.Client != nil {
+		cfg.Client.Auth = cfg.Auth
+	}
+}
+
 // Run implements the endorsement submission API.  If the session does not
 // complete synchronously, this call will block until either the session state
 // moves out of the processing state, or the MaxAttempts*PollPeriod threshold is
@@ -70,7 +85,7 @@ func (cfg SubmitConfig) Run(endorsement []byte, mediaType string) error {
 	}
 
 	if cfg.Client == nil {
-		cfg.Client = common.NewClient()
+		cfg.Client = common.NewClient(cfg.Auth)
 	}
 
 	// POST endorsement to the /submit endpoint
