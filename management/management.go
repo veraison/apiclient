@@ -10,6 +10,7 @@ import (
 	"net/url"
 
 	"github.com/google/uuid"
+	"github.com/veraison/apiclient/auth"
 	"github.com/veraison/apiclient/common"
 )
 
@@ -33,9 +34,10 @@ type Service struct {
 }
 
 // NewService creates a new Service instance using the provided endpoint
-// URI and the default HTTP client.
-func NewService(uri string) (*Service, error) {
-	m := Service{Client: common.NewClient()}
+// URI and the default HTTP client. If the supplied IAuthenticator is not nil,
+// that will be used to set the Authorization header in the service requests.
+func NewService(uri string, a auth.IAuthenticator) (*Service, error) {
+	m := Service{Client: common.NewClient(a)}
 
 	if err := m.SetEndpointURI(uri); err != nil {
 		return nil, err

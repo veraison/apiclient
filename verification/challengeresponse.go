@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/veraison/apiclient/auth"
 	"github.com/veraison/apiclient/common"
 	"github.com/veraison/cmw"
 )
@@ -38,13 +39,14 @@ var cmwInfoMap = map[CmwWrap]cmwInfo{
 // ChallengeResponseConfig holds the configuration for one or more
 // challenge-response exchanges
 type ChallengeResponseConfig struct {
-	Nonce           []byte          // an explicit nonce supplied by the user
-	NonceSz         uint            // the size of a nonce to be provided by server
-	EvidenceBuilder EvidenceBuilder // Evidence generation logics supplied by the user
-	NewSessionURI   string          // URI of the "/newSession" endpoint
-	Client          *common.Client  // HTTP(s) client connection configuration
-	DeleteSession   bool            // explicitly DELETE the session object after we are done
-	Wrap            CmwWrap         // when set, wrap the supplied evidence as a Conceptual Message Wrapper(CMW)
+	Nonce           []byte              // an explicit nonce supplied by the user
+	NonceSz         uint                // the size of a nonce to be provided by server
+	EvidenceBuilder EvidenceBuilder     // Evidence generation logics supplied by the user
+	NewSessionURI   string              // URI of the "/newSession" endpoint
+	Client          *common.Client      // HTTP(s) client connection configuration
+	DeleteSession   bool                // explicitly DELETE the session object after we are done
+	Wrap            CmwWrap             // when set, wrap the supplied evidence as a Conceptual Message Wrapper(CMW)
+	Auth            auth.IAuthenticator // when set, Auth supplies the Authorization header for requests
 }
 
 // Blob wraps a base64 encoded value together with its media type
@@ -146,7 +148,7 @@ func (cfg ChallengeResponseConfig) Run() ([]byte, error) {
 
 	// Attach the default client if the user hasn't supplied one
 	if cfg.Client == nil {
-		cfg.Client = common.NewClient()
+		cfg.Client = common.NewClient(cfg.Auth)
 	}
 
 	newSessionCtx, sessionURI, err := cfg.newSession()
@@ -196,7 +198,7 @@ func (cfg ChallengeResponseConfig) NewSession() (*ChallengeResponseSession, stri
 
 	// Attach the default client if the user hasn't supplied one
 	if cfg.Client == nil {
-		cfg.Client = common.NewClient()
+		cfg.Client = common.NewClient(cfg.Auth)
 	}
 
 	return cfg.newSession()

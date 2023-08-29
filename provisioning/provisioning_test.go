@@ -37,7 +37,7 @@ func TestSubmitConfig_check_no_submit_uri(t *testing.T) {
 
 func TestSubmitConfig_SetClient_ok(t *testing.T) {
 	tv := SubmitConfig{}
-	client := common.NewClient()
+	client := common.NewClient(nil)
 	err := tv.SetClient(client)
 	assert.NoError(t, err)
 }

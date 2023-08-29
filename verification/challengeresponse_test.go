@@ -67,7 +67,7 @@ func TestChallengeResponseConfig_SetNonceSz_zero_noncesz(t *testing.T) {
 }
 func TestChallengeResponseConfig_SetClient_ok(t *testing.T) {
 	cfg := ChallengeResponseConfig{}
-	client := common.NewClient()
+	client := common.NewClient(nil)
 	err := cfg.SetClient(client)
 	assert.NoError(t, err)
 }

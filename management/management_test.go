@@ -28,13 +28,13 @@ var (
 )
 
 func TestService_NewService(t *testing.T) {
-	_, err := NewService(string([]byte{0x7f}))
+	_, err := NewService(string([]byte{0x7f}), nil)
 	assert.EqualError(t, err, "malformed URI: parse \"\\x7f\": net/url: invalid control character in URL")
 
-	_, err = NewService("test")
+	_, err = NewService("test", nil)
 	assert.EqualError(t, err, "URI is not absolute: \"test\"")
 
-	service, err := NewService("http://veraison.example:9999/test/v1")
+	service, err := NewService("http://veraison.example:9999/test/v1", nil)
 	assert.NoError(t, err)
 	assert.Equal(t, "veraison.example:9999", service.EndPointURI.Host)
 }
