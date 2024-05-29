@@ -46,6 +46,39 @@ func NewService(uri string, a auth.IAuthenticator) (*Service, error) {
 	return &m, nil
 }
 
+// NewInsecureTLSService creates a new Service instance using the provided
+// endpoint URI and an HTTPS client that does not verify certs. If the supplied
+// IAuthenticator is not nil, that will be used to set the Authorization header
+// in the service requests.
+func NewInsecureTLSService(uri string, a auth.IAuthenticator) (*Service, error) {
+	m := Service{Client: common.NewInsecureTLSClient(a)}
+
+	if err := m.doSetEndpointURI(uri, true); err != nil {
+		return nil, err
+	}
+
+	return &m, nil
+}
+
+// NewTLSService creates a new Service instance using the provided endpoint URI
+// and an HTTPS client configured with the specified certs (in addition to the
+// system certs). If the supplied IAuthenticator is not nil, that will be used
+// to set the Authorization header in the service requests.
+func NewTLSService(uri string, a auth.IAuthenticator, certPaths []string) (*Service, error) {
+	cli, err := common.NewTLSClient(a, certPaths)
+	if err != nil {
+		return nil, err
+	}
+
+	m := Service{Client: cli}
+
+	if err := m.doSetEndpointURI(uri, true); err != nil {
+		return nil, err
+	}
+
+	return &m, nil
+}
+
 // SetClient sets the HTTP(s) client connection configuration
 func (o *Service) SetClient(client *common.Client) error {
 	if client == nil {
@@ -57,18 +90,7 @@ func (o *Service) SetClient(client *common.Client) error {
 
 // SetEndpointURI sets the URI if the Veraison services management endpoint.
 func (o *Service) SetEndpointURI(uri string) error {
-	u, err := url.Parse(uri)
-	if err != nil {
-		return fmt.Errorf("malformed URI: %w", err)
-	}
-
-	if !u.IsAbs() {
-		return fmt.Errorf("URI is not absolute: %q", uri)
-	}
-
-	o.EndPointURI = u
-
-	return nil
+	return o.doSetEndpointURI(uri, false)
 }
 
 // CreateOPAPolicy is a wrapper around CreatePolicy that assumes the OPA media
@@ -272,4 +294,23 @@ func policiesFromResponse(res *http.Response) ([]*Policy, error) {
 	}
 
 	return policies, nil
+}
+
+func (o *Service) doSetEndpointURI(uri string, checkTLS bool) error {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return fmt.Errorf("malformed URI: %w", err)
+	}
+
+	if !u.IsAbs() {
+		return fmt.Errorf("URI is not absolute: %q", uri)
+	}
+
+	if checkTLS && u.Scheme != "https" {
+		return fmt.Errorf("expected HTTPS scheme, but got: %q", uri)
+	}
+
+	o.EndPointURI = u
+
+	return nil
 }

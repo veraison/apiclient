@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/veraison/apiclient/auth"
 	"github.com/veraison/apiclient/common"
 )
 
@@ -17,6 +18,7 @@ var (
 	testEndorsementMediaType = "application/corim+cbor"
 	testSubmitURI            = "http://veraison.example/endorsement-provisioning/v1/submit"
 	testSessionURI           = "http://veraison.example/endorsement-provisioning/v1/session/1234"
+	testCertPaths            = []string{"/test/path1", "/test/path2"}
 )
 
 func TestSubmitConfig_check_ok(t *testing.T) {
@@ -372,4 +374,41 @@ func TestSubmitConfig_pollForSubmissionCompletion_success_status(t *testing.T) {
 	testSubmitConfigPollForSubmissionCompletionNegative(
 		t, responseCode, []byte(sessionBody), expectedErr,
 	)
+}
+
+func TestSubmitConfig_initClient(t *testing.T) {
+	cfg := SubmitConfig{SubmitURI: testSubmitURI}
+	require.NoError(t, cfg.initClient())
+	assert.Nil(t, cfg.Client.HTTPClient.Transport)
+
+	cfg = SubmitConfig{SubmitURI: testSubmitURI, UseTLS: true}
+	require.NoError(t, cfg.initClient())
+	require.NotNil(t, cfg.Client.HTTPClient.Transport)
+	transport := cfg.Client.HTTPClient.Transport.(*http.Transport)
+	assert.False(t, transport.TLSClientConfig.InsecureSkipVerify)
+
+	cfg = SubmitConfig{SubmitURI: testSubmitURI, UseTLS: true, IsInsecure: true}
+	require.NoError(t, cfg.initClient())
+	require.NotNil(t, cfg.Client.HTTPClient.Transport)
+	transport = cfg.Client.HTTPClient.Transport.(*http.Transport)
+	assert.True(t, transport.TLSClientConfig.InsecureSkipVerify)
+}
+
+func TestSubmitConfig_setters(t *testing.T) {
+	cfg := SubmitConfig{SubmitURI: testSubmitURI}
+	require.NoError(t, cfg.initClient())
+
+	cfg.SetDeleteSession(true)
+	assert.True(t, cfg.DeleteSession)
+
+	a := &auth.NullAuthenticator{}
+	cfg.SetAuth(a)
+	assert.Equal(t, a, cfg.Auth)
+	assert.Equal(t, a, cfg.Client.Auth)
+
+	cfg.SetIsInsecure(true)
+	assert.True(t, cfg.IsInsecure)
+
+	cfg.SetCerts(testCertPaths)
+	assert.EqualValues(t, testCertPaths, cfg.CACerts)
 }

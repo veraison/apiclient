@@ -29,10 +29,13 @@ type SubmitSession struct {
 
 // SubmitConfig holds the context of an endorsement submission API session
 type SubmitConfig struct {
+	CACerts       []string            // paths to CA certs to be used in addition to system certs for TLS connections
 	Client        *common.Client      // HTTP(s) client connection configuration
 	SubmitURI     string              // URI of the /submit endpoint
-	DeleteSession bool                // explicitly DELETE the session object after we are done
 	Auth          auth.IAuthenticator // when set, Auth supplies the Authorization header for requests
+	DeleteSession bool                // explicitly DELETE the session object after we are done
+	UseTLS        bool                // use TLS for server connections
+	IsInsecure    bool                // allow insecure server connections (only matters when UseTLS is true)
 }
 
 // SetClient sets the HTTP(s) client connection configuration
@@ -58,6 +61,7 @@ func (cfg *SubmitConfig) SetSubmitURI(uri string) error {
 	if !u.IsAbs() {
 		return errors.New("uri is not absolute")
 	}
+	cfg.UseTLS = u.Scheme == "https"
 	cfg.SubmitURI = uri
 	return nil
 }
@@ -75,6 +79,16 @@ func (cfg *SubmitConfig) SetAuth(a auth.IAuthenticator) {
 	}
 }
 
+// SetIsInsecure sets the IsInsecure parameter using the supplied val
+func (cfg *SubmitConfig) SetIsInsecure(val bool) {
+	cfg.IsInsecure = val
+}
+
+// SetCerts sets the CACerts parameter to the specified paths
+func (cfg *SubmitConfig) SetCerts(paths []string) {
+	cfg.CACerts = paths
+}
+
 // Run implements the endorsement submission API.  If the session does not
 // complete synchronously, this call will block until either the session state
 // moves out of the processing state, or the MaxAttempts*PollPeriod threshold is
@@ -84,8 +98,9 @@ func (cfg SubmitConfig) Run(endorsement []byte, mediaType string) error {
 		return err
 	}
 
-	if cfg.Client == nil {
-		cfg.Client = common.NewClient(cfg.Auth)
+	// Attach the default client if the user hasn't supplied one
+	if err := cfg.initClient(); err != nil {
+		return err
 	}
 
 	// POST endorsement to the /submit endpoint
@@ -217,4 +232,26 @@ func sessionFromResponse(res *http.Response) (*SubmitSession, error) {
 	}
 
 	return &j, nil
+}
+
+func (cfg *SubmitConfig) initClient() error {
+	if cfg.Client != nil {
+		return nil // client already initialized
+	}
+
+	if !cfg.UseTLS {
+		cfg.Client = common.NewClient(cfg.Auth)
+		return nil
+	}
+
+	if cfg.IsInsecure {
+		cfg.Client = common.NewInsecureTLSClient(cfg.Auth)
+		return nil
+	}
+
+	var err error
+
+	cfg.Client, err = common.NewTLSClient(cfg.Auth, cfg.CACerts)
+
+	return err
 }
