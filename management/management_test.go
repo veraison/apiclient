@@ -39,6 +39,26 @@ func TestService_NewService(t *testing.T) {
 	assert.Equal(t, "veraison.example:9999", service.EndPointURI.Host)
 }
 
+func TestService_TLS_NewTLSService(t *testing.T) {
+	_, err := NewTLSService("http://veraison.example:9999/test/v1", nil, nil)
+	assert.Contains(t, err.Error(), "expected HTTPS scheme")
+
+	service, err := NewTLSService("https://veraison.example:9999/test/v1", nil, nil)
+	require.NoError(t, err)
+	transport := service.Client.HTTPClient.Transport.(*http.Transport)
+	assert.False(t, transport.TLSClientConfig.InsecureSkipVerify)
+}
+
+func TestService_TLS_NewInsecureTLSService(t *testing.T) {
+	_, err := NewInsecureTLSService("http://veraison.example:9999/test/v1", nil)
+	assert.Contains(t, err.Error(), "expected HTTPS scheme")
+
+	service, err := NewInsecureTLSService("https://veraison.example:9999/test/v1", nil)
+	require.NoError(t, err)
+	transport := service.Client.HTTPClient.Transport.(*http.Transport)
+	assert.True(t, transport.TLSClientConfig.InsecureSkipVerify)
+}
+
 func TestService_CreateOPAPolicy(t *testing.T) {
 	expectedURI := testEndpointURI.JoinPath("policy", "test_scheme")
 	expectedURI.RawQuery = "name=test_name"

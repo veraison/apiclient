@@ -40,13 +40,16 @@ var cmwInfoMap = map[CmwWrap]cmwInfo{
 // challenge-response exchanges
 type ChallengeResponseConfig struct {
 	Nonce           []byte              // an explicit nonce supplied by the user
+	CACerts         []string            // paths to CA certs to be used in addition to system certs for TLS connections
 	NonceSz         uint                // the size of a nonce to be provided by server
 	EvidenceBuilder EvidenceBuilder     // Evidence generation logics supplied by the user
 	NewSessionURI   string              // URI of the "/newSession" endpoint
 	Client          *common.Client      // HTTP(s) client connection configuration
-	DeleteSession   bool                // explicitly DELETE the session object after we are done
 	Wrap            CmwWrap             // when set, wrap the supplied evidence as a Conceptual Message Wrapper(CMW)
 	Auth            auth.IAuthenticator // when set, Auth supplies the Authorization header for requests
+	DeleteSession   bool                // explicitly DELETE the session object after we are done
+	UseTLS          bool                // use TLS for server connections
+	IsInsecure      bool                // allow insecure server connections (only matters when UseTLS is true)
 }
 
 // Blob wraps a base64 encoded value together with its media type
@@ -103,8 +106,19 @@ func (cfg *ChallengeResponseConfig) SetSessionURI(uri string) error {
 	if !u.IsAbs() {
 		return errors.New("the supplied session URI is not in absolute form")
 	}
+	cfg.UseTLS = u.Scheme == "https"
 	cfg.NewSessionURI = uri
 	return nil
+}
+
+// SetIsInsecure sets the IsInsecure parameter using the supplied val
+func (cfg *ChallengeResponseConfig) SetIsInsecure(val bool) {
+	cfg.IsInsecure = val
+}
+
+// SetCerts sets the CACerts parameter to the specified paths
+func (cfg *ChallengeResponseConfig) SetCerts(paths []string) {
+	cfg.CACerts = paths
 }
 
 // SetClient sets the HTTP(s) client connection configuration
@@ -141,14 +155,14 @@ func (cfg *ChallengeResponseConfig) SetWrap(val CmwWrap) error {
 
 // Run implements the challenge-response protocol FSM invoking the user
 // callback. On success, the received Attestation Result is returned.
-func (cfg ChallengeResponseConfig) Run() ([]byte, error) {
+func (cfg *ChallengeResponseConfig) Run() ([]byte, error) {
 	if err := cfg.check(true); err != nil {
 		return nil, err
 	}
 
 	// Attach the default client if the user hasn't supplied one
-	if cfg.Client == nil {
-		cfg.Client = common.NewClient(cfg.Auth)
+	if err := cfg.initClient(); err != nil {
+		return nil, err
 	}
 
 	newSessionCtx, sessionURI, err := cfg.newSession()
@@ -197,8 +211,8 @@ func (cfg ChallengeResponseConfig) NewSession() (*ChallengeResponseSession, stri
 	}
 
 	// Attach the default client if the user hasn't supplied one
-	if cfg.Client == nil {
-		cfg.Client = common.NewClient(cfg.Auth)
+	if err := cfg.initClient(); err != nil {
+		return nil, "", err
 	}
 
 	return cfg.newSession()
@@ -396,4 +410,26 @@ func (cfg ChallengeResponseConfig) pollForAttestationResult(uri string) ([]byte,
 	}
 
 	return nil, fmt.Errorf("polling attempts exhausted, session resource state still not complete")
+}
+
+func (cfg *ChallengeResponseConfig) initClient() error {
+	if cfg.Client != nil {
+		return nil // client already initialized
+	}
+
+	if !cfg.UseTLS {
+		cfg.Client = common.NewClient(cfg.Auth)
+		return nil
+	}
+
+	if cfg.IsInsecure {
+		cfg.Client = common.NewInsecureTLSClient(cfg.Auth)
+		return nil
+	}
+
+	var err error
+
+	cfg.Client, err = common.NewTLSClient(cfg.Auth, cfg.CACerts)
+
+	return err
 }

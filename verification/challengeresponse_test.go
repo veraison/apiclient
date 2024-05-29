@@ -28,6 +28,7 @@ var (
 	testSessionURI           = testBaseURI + testRelSessionURI
 	testNewSessionURI        = testBaseURI + "/challenge-response/v1/newSession"
 	testBadURI               = `http://veraison.example:80challenge-response/v1/session/1`
+	testCertPaths            = []string{"/test/path1", "/test/path2"}
 )
 
 type testEvidenceBuilder struct{}
@@ -896,4 +897,40 @@ func TestChallengeResponseConfig_Run_async_CMWWrap(t *testing.T) {
 		assert.NoError(t, err)
 		assert.JSONEq(t, expectedResult, string(result))
 	}
+}
+
+func TestChallengeResponseConfig_initClient(t *testing.T) {
+	cfg := ChallengeResponseConfig{NewSessionURI: testNewSessionURI}
+	require.NoError(t, cfg.initClient())
+	assert.Nil(t, cfg.Client.HTTPClient.Transport)
+
+	cfg = ChallengeResponseConfig{NewSessionURI: testNewSessionURI, UseTLS: true}
+	require.NoError(t, cfg.initClient())
+	require.NotNil(t, cfg.Client.HTTPClient.Transport)
+	transport := cfg.Client.HTTPClient.Transport.(*http.Transport)
+	assert.False(t, transport.TLSClientConfig.InsecureSkipVerify)
+
+	cfg = ChallengeResponseConfig{
+		NewSessionURI: testNewSessionURI,
+		UseTLS:        true,
+		IsInsecure:    true,
+	}
+	assert.NoError(t, cfg.initClient())
+	require.NotNil(t, cfg.Client.HTTPClient.Transport)
+	transport = cfg.Client.HTTPClient.Transport.(*http.Transport)
+	assert.True(t, transport.TLSClientConfig.InsecureSkipVerify)
+}
+
+func TestChallengeResponseConfig_setters(t *testing.T) {
+	cfg := ChallengeResponseConfig{NewSessionURI: testNewSessionURI}
+	require.NoError(t, cfg.initClient())
+
+	cfg.SetDeleteSession(true)
+	assert.True(t, cfg.DeleteSession)
+
+	cfg.SetIsInsecure(true)
+	assert.True(t, cfg.IsInsecure)
+
+	cfg.SetCerts(testCertPaths)
+	assert.EqualValues(t, testCertPaths, cfg.CACerts)
 }

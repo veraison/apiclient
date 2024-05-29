@@ -5,9 +5,12 @@ package common
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/veraison/apiclient/auth"
@@ -22,11 +25,65 @@ type Client struct {
 }
 
 // NewClient instantiates a new Client with a fixed 5s timeout. The client will
-// use the provided IAuthenticator for requests, if it is not nil
+// use the provided IAuthenticator for requests, if it is not nil.
 func NewClient(a auth.IAuthenticator) *Client {
+	return NewClientWithTransport(a, nil)
+}
+
+// NewInsecureTLSClient instantiates a new Client with a transport configured
+// to accept TLS connections without verifying certs and a fixed 5s timeout.
+// The client will use the provided IAuthenticator for requests, if it is not
+// nil.
+func NewInsecureTLSClient(a auth.IAuthenticator) *Client {
+	transport := http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // nolint: gosec
+			MinVersion:         tls.VersionTLS12,
+		},
+	}
+
+	return NewClientWithTransport(a, &transport)
+}
+
+// NewTLSClient instantiates a new Client with a fixed 5s timeout and transport
+// configured with the system certificate pool as well as any certs provided.
+// The client will use the provided IAuthenticator for requests, if it is not
+// nil.
+func NewTLSClient(a auth.IAuthenticator, certPaths []string) (*Client, error) {
+	certPool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, certPath := range certPaths {
+		rawCert, err := os.ReadFile(certPath)
+		if err != nil {
+			return nil, fmt.Errorf("could not read cert: %w", err)
+		}
+
+		if ok := certPool.AppendCertsFromPEM(rawCert); !ok {
+			return nil, fmt.Errorf("invalid cert in %s", certPath)
+		}
+	}
+
+	transport := http.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs:    certPool,
+			MinVersion: tls.VersionTLS12,
+		},
+	}
+
+	return NewClientWithTransport(a, &transport), nil
+}
+
+// NewClientWithTransport instantiates a new Client with the specified transport and a fixed
+// 5s timeout. The client will use the provided IAuthenticator for requests, if
+// it is not nil.
+func NewClientWithTransport(a auth.IAuthenticator, transport http.RoundTripper) *Client {
 	return &Client{
 		HTTPClient: http.Client{
-			Timeout: 5 * time.Second,
+			Timeout:   5 * time.Second,
+			Transport: transport,
 		},
 		Auth: a,
 	}
