@@ -6,6 +6,7 @@ GO111MODULE := on
 
 GOPKG := github.com/veraison/apiclient/verification
 GOPKG += github.com/veraison/apiclient/provisioning
+GOPKG += github.com/veraison/apiclient/management
 
 GOLINT ?= golangci-lint
 
