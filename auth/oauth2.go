@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ type Oauth2Authenticator struct {
 	ClientSecret string
 	Username     string
 	Password     string
+	CACerts      []string
 
 	Token *oauth2.Token
 }
@@ -31,6 +33,7 @@ func (o *Oauth2Authenticator) Configure(cfg map[string]interface{}) error {
 		ClientSecret string                 `mapstructure:"client_secret"`
 		Username     string                 `mapstructure:"username"`
 		Password     string                 `mapstructure:"password"`
+		CACerts      []string               `mapstructure:"ca_certs"`
 		Rest         map[string]interface{} `mapstructure:",remain"`
 	}{}
 
@@ -43,6 +46,7 @@ func (o *Oauth2Authenticator) Configure(cfg map[string]interface{}) error {
 	o.TokenURL = decoded.TokenURL
 	o.Username = decoded.Username
 	o.Password = decoded.Password
+	o.CACerts = decoded.CACerts
 
 	if err := o.validate(); err != nil {
 		return err
@@ -88,6 +92,15 @@ func (o *Oauth2Authenticator) obtainToken() (*oauth2.Token, error) {
 		Endpoint: oauth2.Endpoint{
 			TokenURL: o.TokenURL,
 		},
+	}
+
+	if len(o.CACerts) > 0 {
+		transport, err := NewTLSTransport(o.CACerts)
+		if err != nil {
+			return nil, err
+		}
+		client := &http.Client{Transport: transport}
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, client)
 	}
 
 	return conf.PasswordCredentialsToken(ctx, o.Username, o.Password)
