@@ -6,11 +6,9 @@ package common
 import (
 	"bytes"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/veraison/apiclient/auth"
@@ -50,30 +48,12 @@ func NewInsecureTLSClient(a auth.IAuthenticator) *Client {
 // The client will use the provided IAuthenticator for requests, if it is not
 // nil.
 func NewTLSClient(a auth.IAuthenticator, certPaths []string) (*Client, error) {
-	certPool, err := x509.SystemCertPool()
+	transport, err := auth.NewTLSTransport(certPaths)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, certPath := range certPaths {
-		rawCert, err := os.ReadFile(certPath)
-		if err != nil {
-			return nil, fmt.Errorf("could not read cert: %w", err)
-		}
-
-		if ok := certPool.AppendCertsFromPEM(rawCert); !ok {
-			return nil, fmt.Errorf("invalid cert in %s", certPath)
-		}
-	}
-
-	transport := http.Transport{
-		TLSClientConfig: &tls.Config{
-			RootCAs:    certPool,
-			MinVersion: tls.VersionTLS12,
-		},
-	}
-
-	return NewClientWithTransport(a, &transport), nil
+	return NewClientWithTransport(a, transport), nil
 }
 
 // NewClientWithTransport instantiates a new Client with the specified transport and a fixed
