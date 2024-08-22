@@ -283,7 +283,7 @@ func (cfg ChallengeResponseConfig) newSessionRequest() (*http.Response, error) {
 	// nonceSize=32)
 	q := req.URL.Query()
 	if len(cfg.Nonce) > 0 {
-		q.Set("nonce", base64.StdEncoding.EncodeToString(cfg.Nonce))
+		q.Set("nonce", base64.URLEncoding.EncodeToString(cfg.Nonce))
 	} else if cfg.NonceSz > 0 {
 		q.Set("nonceSize", fmt.Sprint(cfg.NonceSz))
 	}

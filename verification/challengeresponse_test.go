@@ -137,7 +137,7 @@ func TestChallengeResponseConfig_NewSession_ok(t *testing.T) {
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "3q2+7w==", r.URL.Query().Get("nonce"))
+		assert.Equal(t, "3q2-7w==", r.URL.Query().Get("nonce"))
 		assert.Equal(t, "application/vnd.veraison.challenge-response-session+json", r.Header.Get("Accept"))
 
 		w.Header().Set("Location", expectedSessionURI)
@@ -251,7 +251,7 @@ func TestChallengeResponseConfig_NewSession_relative_location_ok(t *testing.T) {
 	relativeSessionURI := testRelSessionURI
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "3q2+7w==", r.URL.Query().Get("nonce"))
+		assert.Equal(t, "3q2-7w==", r.URL.Query().Get("nonce"))
 		assert.Equal(t, "application/vnd.veraison.challenge-response-session+json", r.Header.Get("Accept"))
 
 		w.Header().Set("Location", relativeSessionURI)
@@ -821,7 +821,7 @@ func synthesizeSession(mt string, ev []byte) []string {
     }
 }`,
 	}
-	evs := base64.StdEncoding.EncodeToString(ev)
+	evs := base64.URLEncoding.EncodeToString(ev)
 	s[1] = fmt.Sprintf(s[1], mt, evs)
 	s[2] = fmt.Sprintf(s[2], evs)
 	return s
