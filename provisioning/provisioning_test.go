@@ -4,6 +4,7 @@
 package provisioning
 
 import (
+	"io"
 	"net/http"
 	"testing"
 
@@ -69,15 +70,17 @@ func TestSubmitConfig_Run_no_submit_uri(t *testing.T) {
 
 	expectedErr := `bad configuration: no API endpoint`
 
-	err := tv.Run(testEndorsement, testEndorsementMediaType)
+	session, err := tv.Run(testEndorsement, testEndorsementMediaType)
 	assert.EqualError(t, err, expectedErr)
+	assert.Nil(t, session)
 }
 
 func TestSubmitConfig_Run_fail_no_server(t *testing.T) {
 	tv := SubmitConfig{SubmitURI: testSubmitURI}
 
-	err := tv.Run(testEndorsement, testEndorsementMediaType)
+	session, err := tv.Run(testEndorsement, testEndorsementMediaType)
 	assert.ErrorContains(t, err, "no such host")
+	assert.Nil(t, session)
 }
 
 func TestSubmitConfig_Run_fail_404_response(t *testing.T) {
@@ -98,8 +101,9 @@ func TestSubmitConfig_Run_fail_404_response(t *testing.T) {
 
 	expectedErr := `unexpected HTTP response code 404`
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	session, err := cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.EqualError(t, err, expectedErr)
+	assert.Nil(t, session)
 }
 
 func testSubmitConfigRunSyncNegative(
@@ -125,8 +129,9 @@ func testSubmitConfigRunSyncNegative(
 		Client:    client,
 	}
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	session, err := cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.EqualError(t, err, expectedErr)
+	assert.Nil(t, session)
 }
 
 func TestSubmitConfig_Run_fail_sync_without_session_body(t *testing.T) {
@@ -184,8 +189,114 @@ func TestSubmitConfig_Run_sync_success_status(t *testing.T) {
 		Client:    client,
 	}
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	session, err := cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.NoError(t, err)
+	assert.NotNil(t, session)
+	assert.Equal(t, "success", session.Status)
+	assert.Equal(t, "2030-10-12T07:20:50.52Z", session.Expiry)
+}
+
+func TestSubmitConfig_Run_success_info_returned(t *testing.T) {
+	// This test specifically demonstrates the fix for GitHub issue #14:
+	// "Investigate whether Provisioning API Client Return Code on Success"
+	// The Run method now returns SubmitSession with success details that
+	// can be displayed to users upon successful CoRIM submission.
+	sessionBody := `
+{
+    "status": "success",
+    "expiry": "2030-12-25T10:30:45.123Z"
+}`
+
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, sessionMediaType, r.Header.Get("Accept"))
+		assert.Equal(t, testEndorsementMediaType, r.Header.Get("Content-Type"))
+
+		// Verify the CoRIM payload was sent
+		defer r.Body.Close()
+		reqBody, _ := io.ReadAll(r.Body)
+		assert.Equal(t, testEndorsement, reqBody)
+
+		w.Header().Set("Content-Type", sessionMediaType)
+		w.WriteHeader(http.StatusOK)
+		_, e := w.Write([]byte(sessionBody))
+		require.Nil(t, e)
+	})
+
+	client, teardown := common.NewTestingHTTPClient(h)
+	defer teardown()
+
+	cfg := SubmitConfig{
+		SubmitURI: testSubmitURI,
+		Client:    client,
+	}
+
+	// The key improvement: Run now returns success information that can be displayed
+	session, err := cfg.Run(testEndorsement, testEndorsementMediaType)
+
+	// Verify success
+	assert.NoError(t, err)
+	require.NotNil(t, session)
+
+	// Verify success details that can be displayed to users
+	assert.Equal(t, "success", session.Status)
+	assert.Equal(t, "2030-12-25T10:30:45.123Z", session.Expiry)
+	assert.Nil(t, session.FailureReason)
+
+	// Example of how users can now display success information
+	t.Logf("CoRIM successfully submitted! Status: %s, Expires: %s", session.Status, session.Expiry)
+}
+
+func TestSubmitConfig_Run_async_success_info_returned(t *testing.T) {
+	// This test demonstrates the fix for GitHub issue #14 in async scenarios:
+	// The Run method returns SubmitSession with success details even after polling.
+	sessionBodies := []string{
+		`{ "status": "processing", "expiry": "2030-12-25T10:30:45.123Z" }`,
+		`{ "status": "success", "expiry": "2030-12-25T10:30:45.123Z" }`,
+	}
+
+	iter := 1
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch iter {
+		case 1:
+			assert.Equal(t, http.MethodPost, r.Method)
+			w.Header().Set("Content-Type", sessionMediaType)
+			w.Header().Set("Location", testSessionURI)
+			w.WriteHeader(http.StatusCreated)
+			_, e := w.Write([]byte(sessionBodies[0]))
+			require.Nil(t, e)
+			iter++
+		case 2:
+			assert.Equal(t, http.MethodGet, r.Method)
+			w.Header().Set("Content-Type", sessionMediaType)
+			w.WriteHeader(http.StatusOK)
+			_, e := w.Write([]byte(sessionBodies[1]))
+			require.Nil(t, e)
+		}
+	})
+
+	client, teardown := common.NewTestingHTTPClient(h)
+	defer teardown()
+
+	cfg := SubmitConfig{
+		SubmitURI: testSubmitURI,
+		Client:    client,
+	}
+
+	// The key improvement: Run returns success information even for async operations
+	session, err := cfg.Run(testEndorsement, testEndorsementMediaType)
+
+	// Verify success
+	assert.NoError(t, err)
+	require.NotNil(t, session)
+
+	// Verify success details that can be displayed to users after async polling
+	assert.Equal(t, "success", session.Status)
+	assert.Equal(t, "2030-12-25T10:30:45.123Z", session.Expiry)
+	assert.Nil(t, session.FailureReason)
+
+	// Example of async success information display
+	t.Logf("CoRIM async submission completed! Status: %s, Expires: %s", session.Status, session.Expiry)
 }
 
 func TestSubmitConfig_Run_async_fail_unexpected_status(t *testing.T) {
@@ -215,8 +326,9 @@ func TestSubmitConfig_Run_async_fail_unexpected_status(t *testing.T) {
 
 	expectedErr := `unexpected session state "not processing" in 201 response`
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	session, err := cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.EqualError(t, err, expectedErr)
+	assert.Nil(t, session)
 }
 
 func TestSubmitConfig_Run_async_fail_no_location(t *testing.T) {
@@ -247,8 +359,9 @@ func TestSubmitConfig_Run_async_fail_no_location(t *testing.T) {
 
 	expectedErr := `cannot determine URI for the session resource: no Location header found in response`
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	session, err := cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.EqualError(t, err, expectedErr)
+	assert.Nil(t, session)
 }
 
 func TestSubmitConfig_Run_async_with_delete_ok(t *testing.T) {
@@ -297,8 +410,10 @@ func TestSubmitConfig_Run_async_with_delete_ok(t *testing.T) {
 		DeleteSession: true,
 	}
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	session, err := cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.NoError(t, err)
+	assert.NotNil(t, session)
+	assert.Equal(t, "success", session.Status)
 }
 
 func testSubmitConfigPollForSubmissionCompletionNegative(
@@ -323,8 +438,9 @@ func testSubmitConfigPollForSubmissionCompletionNegative(
 		Client:    client,
 	}
 
-	err := cfg.pollForSubmissionCompletion(testSessionURI)
+	session, err := cfg.pollForSubmissionCompletion(testSessionURI)
 	assert.EqualError(t, err, expectedErr)
+	assert.Nil(t, session)
 }
 
 func TestSubmitConfig_pollForSubmissionCompletion_fail_not_found(t *testing.T) {

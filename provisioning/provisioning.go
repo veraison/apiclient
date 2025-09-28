@@ -92,15 +92,15 @@ func (cfg *SubmitConfig) SetCerts(paths []string) {
 // Run implements the endorsement submission API.  If the session does not
 // complete synchronously, this call will block until either the session state
 // moves out of the processing state, or the MaxAttempts*PollPeriod threshold is
-// hit.
-func (cfg SubmitConfig) Run(endorsement []byte, mediaType string) error {
+// hit. On success, returns the final SubmitSession with status information.
+func (cfg SubmitConfig) Run(endorsement []byte, mediaType string) (*SubmitSession, error) {
 	if err := cfg.check(); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Attach the default client if the user hasn't supplied one
 	if err := cfg.initClient(); err != nil {
-		return err
+		return nil, err
 	}
 
 	// POST endorsement to the /submit endpoint
@@ -111,98 +111,98 @@ func (cfg SubmitConfig) Run(endorsement []byte, mediaType string) error {
 		cfg.SubmitURI,
 	)
 	if err != nil {
-		return fmt.Errorf("submit request failed: %w", err)
+		return nil, fmt.Errorf("submit request failed: %w", err)
 	}
 
 	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusCreated {
-		return fmt.Errorf("unexpected HTTP response code %d", res.StatusCode)
+		return nil, fmt.Errorf("unexpected HTTP response code %d", res.StatusCode)
 	}
 
 	// if 200 or 201, we have been returned the provisioning session resource in
 	// the response body
 	j, err := sessionFromResponse(res)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// see whether the server is handling our request synchronously or not
 	// (sync)
 	if res.StatusCode == http.StatusOK {
 		if j.Status == common.APIStatusSuccess {
-			return nil
+			return j, nil
 		} else if j.Status == common.APIStatusFailed {
 			s := "submission failed"
 			if j.FailureReason != nil {
 				s += fmt.Sprintf(": %s", *j.FailureReason)
 			}
-			return errors.New(s)
+			return nil, errors.New(s)
 		}
-		return fmt.Errorf("unexpected session state %q in 200 response", j.Status)
+		return nil, fmt.Errorf("unexpected session state %q in 200 response", j.Status)
 	}
 
 	// (async)
 	// expect 'processing' status
 	if j.Status != common.APIStatusProcessing {
-		return fmt.Errorf("unexpected session state %q in 201 response", j.Status)
+		return nil, fmt.Errorf("unexpected session state %q in 201 response", j.Status)
 	}
 
 	sessionURI, err := common.ExtractLocation(res, cfg.SubmitURI)
 	if err != nil {
-		return fmt.Errorf("cannot determine URI for the session resource: %w", err)
+		return nil, fmt.Errorf("cannot determine URI for the session resource: %w", err)
 	}
 
-	err = cfg.pollForSubmissionCompletion(sessionURI)
+	session, err := cfg.pollForSubmissionCompletion(sessionURI)
 
 	// if requested, explicitly call DELETE on the session resource
 	if cfg.DeleteSession {
-		if err = cfg.Client.DeleteResource(sessionURI); err != nil {
-			log.Printf("DELETE %s failed: %v", sessionURI, err)
+		if delErr := cfg.Client.DeleteResource(sessionURI); delErr != nil {
+			log.Printf("DELETE %s failed: %v", sessionURI, delErr)
 		}
 	}
 
-	return err
+	return session, err
 }
 
 // pollForSubmissionCompletion polls the supplied URI while the resource state
 // is "processing".  If the resource state is still "processing" when the
 // configured number of polls has been attempted, or the state of the resource
 // transitions to "failed", or an unexpected HTTP status is encountered, an
-// error is returned.
-func (cfg SubmitConfig) pollForSubmissionCompletion(uri string) error {
+// error is returned. On success, returns the final SubmitSession.
+func (cfg SubmitConfig) pollForSubmissionCompletion(uri string) (*SubmitSession, error) {
 	client := &cfg.Client.HTTPClient
 
 	for attempt := 1; attempt < common.MaxAttempts; attempt++ {
 		res, err := client.Get(uri)
 		if err != nil {
-			return fmt.Errorf("session resource fetch failed: %w", err)
+			return nil, fmt.Errorf("session resource fetch failed: %w", err)
 		}
 
 		if res.StatusCode != http.StatusOK {
-			return fmt.Errorf("session resource fetch returned an unexpected status: %s", res.Status)
+			return nil, fmt.Errorf("session resource fetch returned an unexpected status: %s", res.Status)
 		}
 
 		j, err := sessionFromResponse(res)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		switch j.Status {
 		case common.APIStatusSuccess:
-			return nil
+			return j, nil
 		case common.APIStatusFailed:
 			s := "submission failed"
 			if j.FailureReason != nil {
 				s += fmt.Sprintf(": %s", *j.FailureReason)
 			}
-			return errors.New(s)
+			return nil, errors.New(s)
 		case common.APIStatusProcessing:
 			time.Sleep(common.PollPeriod)
 		default:
-			return fmt.Errorf("unexpected session state %q in 200 response", j.Status)
+			return nil, fmt.Errorf("unexpected session state %q in 200 response", j.Status)
 		}
 	}
 
-	return fmt.Errorf("polling attempts exhausted, session resource state still not complete")
+	return nil, fmt.Errorf("polling attempts exhausted, session resource state still not complete")
 }
 
 func (cfg SubmitConfig) check() error {

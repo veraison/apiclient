@@ -36,8 +36,10 @@ trigger the protocol FSM, hiding any details about the synchronus / async nature
 of the underlying exchange.  The user must supply the byte buffer containing the
 serialized endorsement, and the associated media type:
 
-	err := cfg.Run(corimBuf, "application/corim+cbor")
+	session, err := cfg.Run(corimBuf, "application/corim+cbor")
 
-On success err is nil.
+On success, session contains the final submission status and err is nil.
+The session object provides details like status, expiry time, and other
+submission information that can be displayed to the user.
 */
 package provisioning
