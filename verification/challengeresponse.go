@@ -26,16 +26,6 @@ const (
 	WrapJSON
 )
 
-type cmwInfo struct {
-	mt string
-	s  cmw.Serialization
-}
-
-var cmwInfoMap = map[CmwWrap]cmwInfo{
-	WrapCBOR: {mt: "application/vnd.veraison.cmw+cbor", s: cmw.CBORArray},
-	WrapJSON: {mt: "application/vnd.veraison.cmw+json", s: cmw.JSONArray},
-}
-
 // ChallengeResponseConfig holds the configuration for one or more
 // challenge-response exchanges
 type ChallengeResponseConfig struct {
@@ -176,7 +166,7 @@ func (cfg *ChallengeResponseConfig) Run() ([]byte, error) {
 	}
 
 	if cfg.Wrap != NoWrap {
-		evidence, mediaType, err = cfg.wrapEvInCMW(evidence, mediaType)
+		evidence, mediaType, err = cfg.wrapEvidenceInCMW(evidence, mediaType)
 		if err != nil {
 			return nil, err
 		}
@@ -185,21 +175,28 @@ func (cfg *ChallengeResponseConfig) Run() ([]byte, error) {
 	return cfg.ChallengeResponse(evidence, mediaType, sessionURI)
 }
 
-func (cfg ChallengeResponseConfig) wrapEvInCMW(evidence []byte, mt string) ([]byte, string, error) {
-	c := &cmw.CMW{}
-	c.SetMediaType(mt)
-	c.SetValue(evidence)
-	c.SetIndicators(cmw.Evidence)
-	cmi, ok := cmwInfoMap[cfg.Wrap]
-	if !ok {
-		return nil, "", fmt.Errorf("unable to get cmw info for Wrap: %d", cfg.Wrap)
+func (cfg ChallengeResponseConfig) wrapEvidenceInCMW(evidence []byte, mt string) ([]byte, string, error) {
+	c, err := cmw.NewMonad(mt, evidence, cmw.Evidence)
+	if err != nil {
+		return nil, "", fmt.Errorf("CMW creation failed: %w", err)
 	}
 
-	cm, err := c.Serialize(cmi.s)
-	if err != nil {
-		return nil, "", fmt.Errorf("cmw serialization failed: %w", err)
+	switch cfg.Wrap {
+	case WrapCBOR:
+		cm, err := c.MarshalCBOR()
+		if err != nil {
+			return nil, "", fmt.Errorf("CMW CBOR marshalling failed: %w", err)
+		}
+		return cm, "application/vnd.veraison.cmw+cbor", nil
+	case WrapJSON:
+		cm, err := c.MarshalJSON()
+		if err != nil {
+			return nil, "", fmt.Errorf("CMW JSON marshalling failed: %w", err)
+		}
+		return cm, "application/vnd.veraison.cmw+json", nil
 	}
-	return cm, cmi.mt, nil
+
+	return nil, "", fmt.Errorf("internal error: invalid CMW wrap option: %d", cfg.Wrap)
 }
 
 // NewSession runs the first part of the interaction which deals with session
