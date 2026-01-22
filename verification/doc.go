@@ -119,5 +119,50 @@ invoked to submit it to the allocated session with the Verifier that, on
 success, will return the Attestation Result:
 
 	attestationResult, err := cfg.ChallengeResponse(evidence, mediaType, sessionURI)
+
+# Discovery
+
+The discovery document retrieval process is encapsulated in the
+DiscoveryConfig object.
+
+Users create a DiscoveryConfig object supplying the Discovery URI:
+
+	cfg := DiscoveryConfig{}
+	err := cfg.SetDiscoveryURI("http://veraison.example/.well-known/veraison/verification")
+	if err != nil {
+		// handle error
+	}
+
+The user can also supply a custom Client object, for example to appropriately
+configure the underlying TLS transport:
+
+	err = cfg.SetClient(&common.Client{
+		HTTPClient: http.Client{
+			Transport: myTLSConfig,
+		}
+	})
+	if err != nil {
+		// handle error
+	}
+
+Then the Run method is invoked on the instantiated DiscoveryConfig
+object to trigger the retrieval of the discovery document:
+
+	discoveryObject, err := cfg.Run()
+	if err != nil {
+		// handle error
+	}
+
+On success, the decoded discovery document is returned as a
+DiscoveryObject structure:
+
+	fmt.Printf("%+v\n", discoveryObject)
+
+The discovery document contains various pieces of information, including the URI
+of the "new session" challenge-response endpoint. This URI can be used to
+instantiate a ChallengeResponseConfig object, as described above. It also
+contains details of the Evidence media types supported by the Verifier and the
+Verifier's public key. The latter can be used to verify the signature on the
+Attestation Result returned by the challenge-response protocol.
 */
 package verification
