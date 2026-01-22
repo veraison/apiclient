@@ -70,7 +70,7 @@ func TestDiscoveryConfig_Run_ok(t *testing.T) {
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", discoveryMediaType)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(testDiscoveryObjectJSON))
+		w.Write([]byte(testDiscoveryObjectJSON)) // nolint: errcheck, gosec
 	})
 
 	client, teardown := common.NewTestingHTTPClient(h)
@@ -97,7 +97,7 @@ func TestDiscoveryConfig_Run_fail_bad_object(t *testing.T) {
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", discoveryMediaType)
 		w.WriteHeader(http.StatusOK)
-		w.Write(badObject)
+		w.Write(badObject) // nolint: errcheck, gosec
 	})
 
 	client, teardown := common.NewTestingHTTPClient(h)

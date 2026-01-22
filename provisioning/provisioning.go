@@ -128,9 +128,10 @@ func (cfg SubmitConfig) Run(endorsement []byte, mediaType string) error {
 	// see whether the server is handling our request synchronously or not
 	// (sync)
 	if res.StatusCode == http.StatusOK {
-		if j.Status == common.APIStatusSuccess {
+		switch j.Status {
+		case common.APIStatusSuccess:
 			return nil
-		} else if j.Status == common.APIStatusFailed {
+		case common.APIStatusFailed:
 			s := "submission failed"
 			if j.FailureReason != nil {
 				s += fmt.Sprintf(": %s", *j.FailureReason)

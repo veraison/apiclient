@@ -175,7 +175,7 @@ func (cfg *ChallengeResponseConfig) Run() ([]byte, error) {
 	return cfg.ChallengeResponse(evidence, mediaType, sessionURI)
 }
 
-func (cfg ChallengeResponseConfig) wrapEvidenceInCMW(evidence []byte, mt string) ([]byte, string, error) {
+func (cfg ChallengeResponseConfig) wrapEvidenceInCMW(evidence []byte, mt string) ([]byte, string, error) { // nolint: gocritic
 	c, err := cmw.NewMonad(mt, evidence, cmw.Evidence)
 	if err != nil {
 		return nil, "", fmt.Errorf("CMW creation failed: %w", err)
@@ -185,13 +185,13 @@ func (cfg ChallengeResponseConfig) wrapEvidenceInCMW(evidence []byte, mt string)
 	case WrapCBOR:
 		cm, err := c.MarshalCBOR()
 		if err != nil {
-			return nil, "", fmt.Errorf("CMW CBOR marshalling failed: %w", err)
+			return nil, "", fmt.Errorf("CMW CBOR marshaling failed: %w", err)
 		}
 		return cm, "application/vnd.veraison.cmw+cbor", nil
 	case WrapJSON:
 		cm, err := c.MarshalJSON()
 		if err != nil {
-			return nil, "", fmt.Errorf("CMW JSON marshalling failed: %w", err)
+			return nil, "", fmt.Errorf("CMW JSON marshaling failed: %w", err)
 		}
 		return cm, "application/vnd.veraison.cmw+json", nil
 	}

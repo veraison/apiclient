@@ -43,7 +43,7 @@ func ResolveReference(baseURI, referenceURI string) (string, error) {
 }
 
 func DecodeJSONBody(res *http.Response, j interface{}) error {
-	defer res.Body.Close()
+	defer res.Body.Close() // nolint: errcheck
 
 	return json.NewDecoder(res.Body).Decode(&j)
 }

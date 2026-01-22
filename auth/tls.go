@@ -19,7 +19,7 @@ func NewTLSTransport(certPaths []string) (*http.Transport, error) {
 	}
 
 	for _, certPath := range certPaths {
-		rawCert, err := os.ReadFile(certPath)
+		rawCert, err := os.ReadFile(certPath) // nolint: gosec
 		if err != nil {
 			return nil, fmt.Errorf("could not read cert: %w", err)
 		}

@@ -54,7 +54,7 @@ func (cfg *DiscoveryConfig) SetIsInsecure() {
 
 // SetCerts sets the CA certificates to the specified paths
 func (cfg *DiscoveryConfig) SetCerts(paths []string) error {
-	if paths == nil || len(paths) == 0 {
+	if len(paths) == 0 {
 		return errors.New("no CA certificate paths supplied")
 	}
 	cfg.caCerts = paths
