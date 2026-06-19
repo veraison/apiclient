@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -193,6 +194,13 @@ func TestQueryConfig_SetIsInsecure(t *testing.T) {
 	assert.True(t, cfg.IsInsecure)
 }
 
+func TestQueryConfig_EnableCache(t *testing.T) {
+	cfg := QueryConfig{}
+	assert.False(t, cfg.Cache)
+	cfg.EnableCache(true)
+	assert.True(t, cfg.Cache)
+}
+
 func TestQueryConfig_SetCerts(t *testing.T) {
 	cfg := QueryConfig{}
 	_ = cfg.SetCerts(testCACerts)
@@ -226,6 +234,27 @@ func TestQueryConfig_initClient_already_set(t *testing.T) {
 	err := cfg.initClient()
 	assert.NoError(t, err)
 	assert.Equal(t, customClient, cfg.Client)
+}
+
+func TestQueryConfig_initClient_with_cache(t *testing.T) {
+	cfg := QueryConfig{
+		Cache: true,
+	}
+	err := cfg.initClient()
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg.Client)
+	_, ok := cfg.Client.HTTPClient.Transport.(*cachedTransport)
+	assert.True(t, ok)
+}
+
+func TestAddCache(t *testing.T) {
+	err := addCache(nil)
+	assert.EqualError(t, err, "failed to add cache layer, client is empty")
+	customClient := common.NewClient(nil)
+	err = addCache(customClient)
+	assert.NoError(t, err)
+	_, ok := customClient.HTTPClient.Transport.(*cachedTransport)
+	assert.True(t, ok)
 }
 
 func TestQueryConfig_RunQueryForUnsignedResponse_Success(t *testing.T) {
@@ -497,4 +526,77 @@ func TestExtractCoservFromSignedResponse_InvalidPayload(t *testing.T) {
 	_, err = ExtractCoservFromSignedResponse(signedData, []cose.Verifier{verifier})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "signature verification failed with all keys")
+}
+
+// Testing cache with 60 seconds Max Age
+func TestQueryConfig_WithCache(t *testing.T) {
+	var hitCount int32
+	respCBOR, err := newDefaultResponse().ToCBOR()
+	require.NoError(t, err)
+
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hitCount, 1)
+		assert.Equal(t, UnsignedCoSERVMediaType, r.Header.Get("Accept"))
+		w.Header().Set("Content-Type", UnsignedCoSERVMediaType)
+		w.Header().Set("Cache-Control", "max-age=60")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(respCBOR)
+	})
+
+	client, teardown := common.NewTestingHTTPClient(h)
+	defer teardown()
+
+	cfg := QueryConfig{}
+	err = cfg.SetRequestResponseURI(testRequestResponseURI)
+	require.NoError(t, err)
+	err = cfg.SetClient(client)
+	require.NoError(t, err)
+
+	cfg.EnableCache(true)
+
+	result, err := cfg.RunQueryForUnsignedResponse(newDefaultQuery())
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+
+	result, err = cfg.RunQueryForUnsignedResponse(newDefaultQuery())
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+
+	assert.Equal(t, atomic.LoadInt32(&hitCount), int32(1))
+}
+
+func TestQueryConfig_WithoutCache(t *testing.T) {
+	var hitCount int32
+	respCBOR, err := newDefaultResponse().ToCBOR()
+	require.NoError(t, err)
+
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hitCount, 1)
+		assert.Equal(t, UnsignedCoSERVMediaType, r.Header.Get("Accept"))
+		w.Header().Set("Content-Type", UnsignedCoSERVMediaType)
+		w.Header().Set("Cache-Control", "max-age=60")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(respCBOR)
+	})
+
+	client, teardown := common.NewTestingHTTPClient(h)
+	defer teardown()
+
+	cfg := QueryConfig{}
+	err = cfg.SetRequestResponseURI(testRequestResponseURI)
+	require.NoError(t, err)
+	err = cfg.SetClient(client)
+	require.NoError(t, err)
+
+	cfg.EnableCache(false)
+
+	result, err := cfg.RunQueryForUnsignedResponse(newDefaultQuery())
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+
+	result, err = cfg.RunQueryForUnsignedResponse(newDefaultQuery())
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+
+	assert.Equal(t, atomic.LoadInt32(&hitCount), int32(2))
 }

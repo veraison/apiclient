@@ -3,6 +3,7 @@ module github.com/veraison/apiclient
 go 1.25.0
 
 require (
+	github.com/bartventer/httpcache v0.13.0
 	github.com/google/uuid v1.3.0
 	github.com/lestrrat-go/jwx/v2 v2.0.21
 	github.com/mitchellh/mapstructure v1.5.0

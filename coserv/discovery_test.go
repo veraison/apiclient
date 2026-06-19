@@ -6,6 +6,7 @@ package coserv
 import (
 	"encoding/json"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,6 +50,13 @@ func TestDiscoveryConfig_SetIsInsecure(t *testing.T) {
 	assert.True(t, cfg.isInsecure)
 }
 
+func TestDiscoveryConfig_EnableCache(t *testing.T) {
+	cfg := &DiscoveryConfig{}
+	assert.False(t, cfg.cache)
+	cfg.EnableCache(true)
+	assert.True(t, cfg.cache)
+}
+
 func TestDiscoveryConfig_SetCerts_Valid(t *testing.T) {
 	cfg := &DiscoveryConfig{}
 	err := cfg.SetCerts([]string{"/path/to/ca1.pem", "/path/to/ca2.pem"})
@@ -78,8 +86,11 @@ func TestDiscoveryConfig_SetClient_Nil(t *testing.T) {
 	assert.Nil(t, cfg.client)
 }
 
-func TestDiscoveryConfig_Run_Success(t *testing.T) {
+// Testing success response with cache (60 seconds Max Age)
+func TestDiscoveryConfig_Run_Success_WithCache(t *testing.T) {
+	var hitCount int32
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hitCount, 1)
 		assert.Equal(t, DiscoveryMediaTypeJson, r.Header.Get("Accept"))
 
 		doc := coserv.DiscoveryDocument{}
@@ -88,6 +99,7 @@ func TestDiscoveryConfig_Run_Success(t *testing.T) {
 		doc.AddCapability("application/coserv+cbor", []coserv.ArtifactSupport{coserv.ArtifactSupportCollected})
 		doc.AddEndPoint("CoSERVRequestResponse", "/endpoint/{query}")
 		w.Header().Set("Content-Type", DiscoveryMediaTypeJson)
+		w.Header().Set("Cache-Control", "max-age=60")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(doc)
 	})
@@ -101,13 +113,62 @@ func TestDiscoveryConfig_Run_Success(t *testing.T) {
 	err = cfg.SetClient(client)
 	require.NoError(t, err)
 
+	cfg.EnableCache(true)
+
 	result, err := cfg.Run()
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	result, err = cfg.Run()
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
 	assert.Equal(t, "1.2.3", result.Version)
 	assert.Contains(t, result.ApiEndPointsMap, "CoSERVRequestResponse")
 	assert.Equal(t, testBaseURI+"/endpoint/{query}", result.QueryEndpointURL)
+	assert.Equal(t, atomic.LoadInt32(&hitCount), int32(1))
+}
+
+func TestDiscoveryConfig_Run_Success_WithoutCache(t *testing.T) {
+	var hitCount int32
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hitCount, 1)
+		assert.Equal(t, DiscoveryMediaTypeJson, r.Header.Get("Accept"))
+
+		doc := coserv.DiscoveryDocument{}
+		doc.SetVersion("1.2.3")
+
+		doc.AddCapability("application/coserv+cbor", []coserv.ArtifactSupport{coserv.ArtifactSupportCollected})
+		doc.AddEndPoint("CoSERVRequestResponse", "/endpoint/{query}")
+		w.Header().Set("Content-Type", DiscoveryMediaTypeJson)
+		w.Header().Set("Cache-Control", "max-age=60")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(doc)
+	})
+
+	client, teardown := common.NewTestingHTTPClient(h)
+	defer teardown()
+
+	cfg := &DiscoveryConfig{}
+	err := cfg.SetDiscoveryURI(testBaseURI)
+	require.NoError(t, err)
+	err = cfg.SetClient(client)
+	require.NoError(t, err)
+
+	cfg.EnableCache(false)
+
+	result, err := cfg.Run()
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	result, err = cfg.Run()
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Equal(t, "1.2.3", result.Version)
+	assert.Contains(t, result.ApiEndPointsMap, "CoSERVRequestResponse")
+	assert.Equal(t, testBaseURI+"/endpoint/{query}", result.QueryEndpointURL)
+	assert.Equal(t, atomic.LoadInt32(&hitCount), int32(2))
 }
 
 func TestDiscoveryConfig_Run_NoDiscoveryURI(t *testing.T) {
@@ -247,6 +308,20 @@ func TestDiscoveryConfig_initClient_TLSInsecure(t *testing.T) {
 	err := cfg.initClient()
 	require.NoError(t, err)
 	assert.NotNil(t, cfg.client)
+}
+
+func TestDiscoveryConfig_initClient_WithCache(t *testing.T) {
+	cfg := &DiscoveryConfig{
+		discoveryURI: "https://example.com",
+		useTLS:       true,
+		isInsecure:   true,
+		cache:        true,
+	}
+	err := cfg.initClient()
+	require.NoError(t, err)
+	assert.NotNil(t, cfg.client)
+	_, ok := cfg.client.HTTPClient.Transport.(*cachedTransport)
+	assert.True(t, ok)
 }
 
 func TestDiscoveryConfig_initClient_AlreadySet(t *testing.T) {

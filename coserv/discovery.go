@@ -1,7 +1,7 @@
 // Copyright 2026 Contributors to the Veraison project.
 // SPDX-License-Identifier: Apache-2.0
 
-package coserv // or keep in package coserv if preferred
+package coserv
 
 import (
 	"errors"
@@ -35,6 +35,7 @@ type DiscoveryConfig struct {
 	client       *common.Client // optional preconfigured HTTP client
 	useTLS       bool           // whether the scheme is https (set automatically from URI)
 	isInsecure   bool           // skip TLS verification (only when useTLS == true)
+	cache        bool           // Enable HTTP caching of reponses (RFC 9111)
 }
 
 // SetDiscoveryURI sets the base server URL. It must be absolute.
@@ -54,6 +55,11 @@ func (cfg *DiscoveryConfig) SetDiscoveryURI(uri string) error {
 // SetIsInsecure enables insecure TLS connections (skip verification).
 func (cfg *DiscoveryConfig) SetIsInsecure(val bool) {
 	cfg.isInsecure = val
+}
+
+// EnableCache enables/disables HTTP Caching (RFC 9111)
+func (cfg *DiscoveryConfig) EnableCache(val bool) {
+	cfg.cache = val
 }
 
 // SetCerts sets additional CA certificate file paths.
@@ -161,20 +167,26 @@ func (cfg *DiscoveryConfig) check() error {
 
 // initClient creates a default common.Client if none was provided.
 func (cfg *DiscoveryConfig) initClient() error {
-	if cfg.client != nil {
-		return nil
+	if cfg.client == nil {
+		if !cfg.useTLS {
+			cfg.client = common.NewClient(nil) // no authenticator, no TLS
+		} else if cfg.isInsecure {
+			cfg.client = common.NewInsecureTLSClient(nil)
+		} else {
+			var err error
+			if cfg.client, err = common.NewTLSClient(nil, cfg.caCerts); err != nil {
+				return err
+			}
+		}
 	}
-	if !cfg.useTLS {
-		cfg.client = common.NewClient(nil) // no authenticator, no TLS
-		return nil
+
+	// Enable caching if config is set
+	if cfg.cache {
+		if err := addCache(cfg.client); err != nil {
+			return err
+		}
 	}
-	if cfg.isInsecure {
-		cfg.client = common.NewInsecureTLSClient(nil)
-		return nil
-	}
-	var err error
-	cfg.client, err = common.NewTLSClient(nil, cfg.caCerts)
-	return err
+	return nil
 }
 
 // doRequest constructs the HTTP GET request to the well‑known discovery endpoint.

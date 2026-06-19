@@ -15,6 +15,7 @@ use DiscoveryConfig:
 		// handle error
 	}
 	cfg.SetIsInsecure(true) // optional: skip TLS verification
+	cfg.EnableCache(true)   // optional: enable HTTP caching (RFC 9111)
 	if err := cfg.SetCerts([]string{"/path/to/ca.pem"}); err != nil {
 		// handle error
 	}
@@ -43,10 +44,11 @@ create a QueryConfig:
 		// handle error
 	}
 
-Optionally configure TLS, authentication, or a custom HTTP client:
+Optionally configure TLS, caching, authentication, or a custom HTTP client:
 
 	qcfg.SetCerts([]string{"/path/to/ca.pem"})
-	cfg.SetIsInsecure(true) // optional: skip TLS verification
+	qcfg.SetIsInsecure(true) // optional: skip TLS verification
+	qcfg.EnableCache(true)   // optional: enable HTTP caching (RFC 9111)
 	qcfg.SetAuth(myAuthenticator)
 
 Build a CoSERV query using the github.com/veraison/corim/coserv package:

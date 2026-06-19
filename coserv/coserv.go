@@ -11,6 +11,9 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/bartventer/httpcache"
+	_ "github.com/bartventer/httpcache/store/memcache"
+
 	"github.com/veraison/apiclient/auth"
 	"github.com/veraison/apiclient/common"
 	"github.com/veraison/corim/coserv"
@@ -31,6 +34,7 @@ type QueryConfig struct {
 	Auth       auth.IAuthenticator // request authentication
 	UseTLS     bool                // whether to use TLS
 	IsInsecure bool                // skip TLS verification
+	Cache      bool                // Enable HTTP caching of reponses (RFC 9111)
 
 	RequestResponseURI *uritemplate.Template // URL template ending with "{query}"
 }
@@ -84,6 +88,11 @@ func (cfg *QueryConfig) SetAuth(a auth.IAuthenticator) {
 // SetIsInsecure disables TLS certificate validation (similar to DiscoveryClientBuilder).
 func (cfg *QueryConfig) SetIsInsecure(val bool) {
 	cfg.IsInsecure = val
+}
+
+// EnableCache enables/disables HTTP Caching (RFC 9111).
+func (cfg *QueryConfig) EnableCache(val bool) {
+	cfg.Cache = val
 }
 
 // SetCerts sets CA certificate paths.
@@ -177,20 +186,70 @@ func (cfg *QueryConfig) check() error {
 
 // initClient creates a default client if none supplied.
 func (cfg *QueryConfig) initClient() error {
-	if cfg.Client != nil {
-		return nil
+	if cfg.Client == nil {
+		if !cfg.UseTLS {
+			cfg.Client = common.NewClient(cfg.Auth)
+		} else if cfg.IsInsecure {
+			cfg.Client = common.NewInsecureTLSClient(cfg.Auth)
+			return nil
+		} else {
+			var err error
+			if cfg.Client, err = common.NewTLSClient(cfg.Auth, cfg.CACerts); err != nil {
+				return err
+			}
+		}
 	}
-	if !cfg.UseTLS {
-		cfg.Client = common.NewClient(cfg.Auth)
-		return nil
+
+	// Enable caching if config is set
+	if cfg.Cache {
+		if err := addCache(cfg.Client); err != nil {
+			return err
+		}
 	}
-	if cfg.IsInsecure {
-		cfg.Client = common.NewInsecureTLSClient(cfg.Auth)
-		return nil
+	return nil
+}
+
+type cachedTransport struct {
+	http.RoundTripper
+}
+
+// Add memory based cache round tripper
+func addCacheRoundTripper(c *common.Client) (err error) {
+	defer func() { // Function to recover gracefully from ErrOpenCache panic
+		if r := recover(); r != nil {
+			err = fmt.Errorf("caching layer addition failed with error: %w", err)
+		}
+	}()
+
+	base := c.HTTPClient.Transport
+
+	rt := httpcache.NewTransport(
+		"memcache://",
+		httpcache.WithUpstream(base),
+		httpcache.WithSWRTimeout(0),
+	)
+
+	c.HTTPClient.Transport = &cachedTransport{
+		RoundTripper: rt,
 	}
-	var err error
-	cfg.Client, err = common.NewTLSClient(cfg.Auth, cfg.CACerts)
-	return err
+
+	return nil
+}
+
+// Add Cache Transport Middleware
+func addCache(c *common.Client) (err error) {
+	if c == nil {
+		err = errors.New("failed to add cache layer, client is empty")
+		return
+	}
+
+	if c.HTTPClient.Transport != nil {
+		if _, ok := c.HTTPClient.Transport.(*cachedTransport); ok {
+			return nil // The client transport is already wrapped
+		}
+	}
+
+	return addCacheRoundTripper(c)
 }
 
 // ExtractCoservFromSignedResponse verifies the raw signed Coserv data using the provided Cose Verifiers.
