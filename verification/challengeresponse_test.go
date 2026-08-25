@@ -1,10 +1,11 @@
-// Copyright 2021 Contributors to the Veraison project.
+// Copyright 2021-2026 Contributors to the Veraison project.
 // SPDX-License-Identifier: Apache-2.0
 
 package verification
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -66,6 +67,20 @@ func TestChallengeResponseConfig_SetNonceSz_zero_noncesz(t *testing.T) {
 	err := cfg.SetNonceSz(0)
 	assert.EqualError(t, err, expectedErr)
 }
+
+func TestChallengeResponseSession_NonceBase64URL(t *testing.T) {
+	var session ChallengeResponseSession
+	require.NoError(t, json.Unmarshal([]byte(`{"nonce":"3q2-7w"}`), &session))
+	assert.Equal(t, testNonce, session.Nonce)
+
+	encoded, err := json.Marshal(ChallengeResponseSession{Nonce: testNonce})
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"nonce":"3q2-7w"`)
+
+	assert.Error(t, json.Unmarshal([]byte(`{"nonce":"3q2-7w=="}`), &session))
+	assert.Error(t, json.Unmarshal([]byte(`{"nonce":"3q2+7w=="}`), &session))
+}
+
 func TestChallengeResponseConfig_SetClient_ok(t *testing.T) {
 	cfg := ChallengeResponseConfig{}
 	client := common.NewClient(nil)
@@ -116,7 +131,7 @@ func TestChallengeResponseConfig_SetEvidenceBuilder_no_ok(t *testing.T) {
 func TestChallengeResponseConfig_NewSession_ok(t *testing.T) {
 	newSessionCreatedBody := `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -137,7 +152,7 @@ func TestChallengeResponseConfig_NewSession_ok(t *testing.T) {
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "3q2-7w==", r.URL.Query().Get("nonce"))
+		assert.Equal(t, "3q2-7w", r.URL.Query().Get("nonce"))
 		assert.Equal(t, "application/vnd.veraison.challenge-response-session+json", r.Header.Get("Accept"))
 
 		w.Header().Set("Location", expectedSessionURI)
@@ -181,7 +196,7 @@ func TestChallengeResponseConfig_SetCMWWrap_nok(t *testing.T) {
 func TestChallengeResponseConfig_NewSession_server_chosen_nonce_ok(t *testing.T) {
 	newSessionCreatedBody := `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -230,7 +245,7 @@ func TestChallengeResponseConfig_NewSession_server_chosen_nonce_ok(t *testing.T)
 func TestChallengeResponseConfig_NewSession_relative_location_ok(t *testing.T) {
 	newSessionCreatedBody := `
 {
-	"nonce": "3q2+7w==",
+	"nonce": "3q2-7w",
 	"expiry": "2030-10-12T07:20:50.52Z",
 	"accept": [
 		"application/psa-attestation-token"
@@ -251,7 +266,7 @@ func TestChallengeResponseConfig_NewSession_relative_location_ok(t *testing.T) {
 	relativeSessionURI := testRelSessionURI
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "3q2-7w==", r.URL.Query().Get("nonce"))
+		assert.Equal(t, "3q2-7w", r.URL.Query().Get("nonce"))
 		assert.Equal(t, "application/vnd.veraison.challenge-response-session+json", r.Header.Get("Accept"))
 
 		w.Header().Set("Location", relativeSessionURI)
@@ -352,7 +367,7 @@ func TestChallengeResponseConfig_check_new_session_uri(t *testing.T) {
 func TestChallengeResponseConfig_ChallengeResponse_sync_ok(t *testing.T) {
 	sessionBody := `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -405,7 +420,7 @@ func TestChallengeResponseConfig_ChallengeResponse_sync_ok(t *testing.T) {
 func TestChallengeResponseConfig_pollForAttestationResult_ok(t *testing.T) {
 	sessionBody := `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -449,7 +464,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_ok(t *testing.T) {
 func TestChallengeResponseConfig_pollForAttestationResult_failed_state(t *testing.T) {
 	sessionBody := `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -486,7 +501,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_failed_state(t *testin
 func TestChallengeResponseConfig_pollForAttestationResult_unexpected_state(t *testing.T) {
 	sessionBody := `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -523,7 +538,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_unexpected_state(t *te
 func TestChallengeResponseConfig_pollForAttestationResult_exhaustion(t *testing.T) {
 	sessionBody := `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -561,7 +576,7 @@ func TestChallengeResponseConfig_pollForAttestationResult_corrupted_resource(t *
 
 	sessionBody := `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -608,7 +623,7 @@ func TestChallengeResponseConfig_ChallengeResponse_bad_config_nil_client(t *test
 func TestChallengeResponseConfig_Run_async_ok(t *testing.T) {
 	sessionState := []string{`
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -616,7 +631,7 @@ func TestChallengeResponseConfig_Run_async_ok(t *testing.T) {
     "status": "waiting"
 }`, `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -628,7 +643,7 @@ func TestChallengeResponseConfig_Run_async_ok(t *testing.T) {
     }
 }`, `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -696,7 +711,7 @@ func TestChallengeResponseConfig_Run_async_ok(t *testing.T) {
 func TestChallengeResponseConfig_Run_async_with_explicit_delete_failed(t *testing.T) {
 	sessionState := []string{`
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -704,7 +719,7 @@ func TestChallengeResponseConfig_Run_async_with_explicit_delete_failed(t *testin
     "status": "waiting"
 }`, `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -716,7 +731,7 @@ func TestChallengeResponseConfig_Run_async_with_explicit_delete_failed(t *testin
     }
 }`, `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -785,7 +800,7 @@ func TestChallengeResponseConfig_Run_async_with_explicit_delete_failed(t *testin
 func synthesizeSession(mt string, ev []byte) []string {
 	s := []string{`
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -793,7 +808,7 @@ func synthesizeSession(mt string, ev []byte) []string {
     "status": "waiting"
 }`, `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"
@@ -805,7 +820,7 @@ func synthesizeSession(mt string, ev []byte) []string {
     }
 }`, `
 {
-    "nonce": "3q2+7w==",
+    "nonce": "3q2-7w",
     "expiry": "2030-10-12T07:20:50.52Z",
     "accept": [
         "application/psa-attestation-token"

@@ -1,4 +1,4 @@
-// Copyright 2021 Contributors to the Veraison project.
+// Copyright 2021-2026 Contributors to the Veraison project.
 // SPDX-License-Identifier: Apache-2.0
 
 package verification
@@ -58,6 +58,44 @@ type ChallengeResponseSession struct {
 	Status   string          `json:"status"`
 	Evidence Blob            `json:"evidence"`
 	Result   json.RawMessage `json:"result"`
+}
+
+// UnmarshalJSON decodes Nonce using base64url, as required by the
+// rats-challenge-response-session+json media type.
+func (s *ChallengeResponseSession) UnmarshalJSON(data []byte) error {
+	type session ChallengeResponseSession
+
+	var decoded struct {
+		Nonce string `json:"nonce"`
+		*session
+	}
+	decoded.session = (*session)(s)
+
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	nonce, err := base64.RawURLEncoding.DecodeString(decoded.Nonce)
+	if err != nil {
+		return fmt.Errorf("decoding nonce as base64url: %w", err)
+	}
+	s.Nonce = nonce
+
+	return nil
+}
+
+// MarshalJSON encodes Nonce as base64url, as required by the
+// rats-challenge-response-session+json media type.
+func (s ChallengeResponseSession) MarshalJSON() ([]byte, error) {
+	type session ChallengeResponseSession
+
+	return json.Marshal(struct {
+		Nonce string `json:"nonce"`
+		*session
+	}{
+		Nonce:   base64.RawURLEncoding.EncodeToString(s.Nonce),
+		session: (*session)(&s),
+	})
 }
 
 // SetNonce sets the Nonce supplied by the user
@@ -276,11 +314,11 @@ func (cfg ChallengeResponseConfig) newSessionRequest() (*http.Response, error) {
 		return nil, fmt.Errorf("building request for new session: %w", err)
 	}
 
-	// pass nonce-related info via query parameters (either nonce=3q2+7w== or
+	// pass nonce-related info via query parameters (either nonce=3q2-7w or
 	// nonceSize=32)
 	q := req.URL.Query()
 	if len(cfg.Nonce) > 0 {
-		q.Set("nonce", base64.URLEncoding.EncodeToString(cfg.Nonce))
+		q.Set("nonce", base64.RawURLEncoding.EncodeToString(cfg.Nonce))
 	} else if cfg.NonceSz > 0 {
 		q.Set("nonceSize", fmt.Sprint(cfg.NonceSz))
 	}
