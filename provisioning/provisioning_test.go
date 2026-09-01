@@ -1,4 +1,4 @@
-// Copyright 2021 Contributors to the Veraison project.
+// Copyright 2021-26 Contributors to the Veraison project.
 // SPDX-License-Identifier: Apache-2.0
 
 package provisioning
@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/veraison/apiclient/auth"
 	"github.com/veraison/apiclient/common"
 )
 
@@ -18,7 +17,6 @@ var (
 	testEndorsementMediaType = "application/corim+cbor"
 	testSubmitURI            = "http://veraison.example/endorsement-provisioning/v1/submit"
 	testSessionURI           = "http://veraison.example/endorsement-provisioning/v1/session/1234"
-	testCertPaths            = []string{"/test/path1", "/test/path2"}
 )
 
 func TestSubmitConfig_check_ok(t *testing.T) {
@@ -37,24 +35,11 @@ func TestSubmitConfig_check_no_submit_uri(t *testing.T) {
 	assert.EqualError(t, err, expectedErr)
 }
 
-func TestSubmitConfig_SetClient_ok(t *testing.T) {
-	tv := SubmitConfig{}
-	client := common.NewClient(nil)
-	err := tv.SetClient(client)
-	assert.NoError(t, err)
-}
-
-func TestSubmitConfig_SetClient_nil_client(t *testing.T) {
-	tv := SubmitConfig{}
-	expectedErr := `no client supplied`
-	err := tv.SetClient(nil)
-	assert.EqualError(t, err, expectedErr)
-}
-
 func TestSubmitConfig_SetSubmitURI_ok(t *testing.T) {
 	tv := SubmitConfig{}
 	err := tv.SetSubmitURI(testSubmitURI)
 	assert.NoError(t, err)
+	assert.Equal(t, testSubmitURI, tv.SubmitURI)
 }
 
 func TestSubmitConfig_SetSubmitURI_not_absolute(t *testing.T) {
@@ -93,12 +78,13 @@ func TestSubmitConfig_Run_fail_404_response(t *testing.T) {
 
 	cfg := SubmitConfig{
 		SubmitURI: testSubmitURI,
-		Client:    client,
 	}
+	err := cfg.SetClient(client)
+	assert.NoError(t, err)
 
 	expectedErr := `unexpected HTTP response code 404`
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	err = cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.EqualError(t, err, expectedErr)
 }
 
@@ -122,10 +108,11 @@ func testSubmitConfigRunSyncNegative(
 
 	cfg := SubmitConfig{
 		SubmitURI: testSubmitURI,
-		Client:    client,
 	}
+	err := cfg.SetClient(client)
+	assert.NoError(t, err)
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	err = cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.EqualError(t, err, expectedErr)
 }
 
@@ -181,10 +168,11 @@ func TestSubmitConfig_Run_sync_success_status(t *testing.T) {
 
 	cfg := SubmitConfig{
 		SubmitURI: testSubmitURI,
-		Client:    client,
 	}
+	err := cfg.SetClient(client)
+	assert.NoError(t, err)
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	err = cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.NoError(t, err)
 }
 
@@ -210,12 +198,13 @@ func TestSubmitConfig_Run_async_fail_unexpected_status(t *testing.T) {
 
 	cfg := SubmitConfig{
 		SubmitURI: testSubmitURI,
-		Client:    client,
 	}
+	err := cfg.SetClient(client)
+	assert.NoError(t, err)
 
 	expectedErr := `unexpected session state "not processing" in 201 response`
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	err = cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.EqualError(t, err, expectedErr)
 }
 
@@ -242,12 +231,13 @@ func TestSubmitConfig_Run_async_fail_no_location(t *testing.T) {
 
 	cfg := SubmitConfig{
 		SubmitURI: testSubmitURI,
-		Client:    client,
 	}
+	err := cfg.SetClient(client)
+	assert.NoError(t, err)
 
 	expectedErr := `cannot determine URI for the session resource: no Location header found in response`
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	err = cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.EqualError(t, err, expectedErr)
 }
 
@@ -293,11 +283,12 @@ func TestSubmitConfig_Run_async_with_delete_ok(t *testing.T) {
 
 	cfg := SubmitConfig{
 		SubmitURI:     testSubmitURI,
-		Client:        client,
 		DeleteSession: true,
 	}
+	err := cfg.SetClient(client)
+	assert.NoError(t, err)
 
-	err := cfg.Run(testEndorsement, testEndorsementMediaType)
+	err = cfg.Run(testEndorsement, testEndorsementMediaType)
 	assert.NoError(t, err)
 }
 
@@ -320,10 +311,11 @@ func testSubmitConfigPollForSubmissionCompletionNegative(
 
 	cfg := SubmitConfig{
 		SubmitURI: testSubmitURI,
-		Client:    client,
 	}
+	err := cfg.SetClient(client)
+	assert.NoError(t, err)
 
-	err := cfg.pollForSubmissionCompletion(testSessionURI)
+	err = cfg.pollForSubmissionCompletion(testSessionURI)
 	assert.EqualError(t, err, expectedErr)
 }
 
@@ -376,39 +368,9 @@ func TestSubmitConfig_pollForSubmissionCompletion_success_status(t *testing.T) {
 	)
 }
 
-func TestSubmitConfig_initClient(t *testing.T) {
-	cfg := SubmitConfig{SubmitURI: testSubmitURI}
-	require.NoError(t, cfg.initClient())
-	assert.Nil(t, cfg.Client.HTTPClient.Transport)
-
-	cfg = SubmitConfig{SubmitURI: testSubmitURI, UseTLS: true}
-	require.NoError(t, cfg.initClient())
-	require.NotNil(t, cfg.Client.HTTPClient.Transport)
-	transport := cfg.Client.HTTPClient.Transport.(*http.Transport)
-	assert.False(t, transport.TLSClientConfig.InsecureSkipVerify)
-
-	cfg = SubmitConfig{SubmitURI: testSubmitURI, UseTLS: true, IsInsecure: true}
-	require.NoError(t, cfg.initClient())
-	require.NotNil(t, cfg.Client.HTTPClient.Transport)
-	transport = cfg.Client.HTTPClient.Transport.(*http.Transport)
-	assert.True(t, transport.TLSClientConfig.InsecureSkipVerify)
-}
-
-func TestSubmitConfig_setters(t *testing.T) {
-	cfg := SubmitConfig{SubmitURI: testSubmitURI}
-	require.NoError(t, cfg.initClient())
+func TestSubmitConfig_SetDeleteSession(t *testing.T) {
+	cfg := SubmitConfig{}
 
 	cfg.SetDeleteSession(true)
 	assert.True(t, cfg.DeleteSession)
-
-	a := &auth.NullAuthenticator{}
-	cfg.SetAuth(a)
-	assert.Equal(t, a, cfg.Auth)
-	assert.Equal(t, a, cfg.Client.Auth)
-
-	cfg.SetIsInsecure(true)
-	assert.True(t, cfg.IsInsecure)
-
-	cfg.SetCerts(testCertPaths)
-	assert.EqualValues(t, testCertPaths, cfg.CACerts)
 }

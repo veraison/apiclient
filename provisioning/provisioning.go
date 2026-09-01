@@ -1,4 +1,4 @@
-// Copyright 2021 Contributors to the Veraison project.
+// Copyright 2021-26 Contributors to the Veraison project.
 // SPDX-License-Identifier: Apache-2.0
 
 package provisioning
@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"time"
 
-	"github.com/veraison/apiclient/auth"
 	"github.com/veraison/apiclient/common"
 )
 
@@ -29,39 +27,20 @@ type SubmitSession struct {
 
 // SubmitConfig holds the context of an endorsement submission API session
 type SubmitConfig struct {
-	CACerts       []string            // paths to CA certs to be used in addition to system certs for TLS connections
-	Client        *common.Client      // HTTP(s) client connection configuration
-	SubmitURI     string              // URI of the /submit endpoint
-	Auth          auth.IAuthenticator // when set, Auth supplies the Authorization header for requests
-	DeleteSession bool                // explicitly DELETE the session object after we are done
-	UseTLS        bool                // use TLS for server connections
-	IsInsecure    bool                // allow insecure server connections (only matters when UseTLS is true)
-}
-
-// SetClient sets the HTTP(s) client connection configuration
-func (cfg *SubmitConfig) SetClient(client *common.Client) error {
-	if client == nil {
-		return errors.New("no client supplied")
-	}
-
-	if cfg.Auth != nil {
-		client.Auth = cfg.Auth
-	}
-
-	cfg.Client = client
-	return nil
+	CommonConfig         // Common Configuration for a provisioning session
+	SubmitURI     string // URI of the /submit endpoint
+	DeleteSession bool   // explicitly DELETE the session object after we are done
 }
 
 // SetSubmitURI sets the URI Parameter
 func (cfg *SubmitConfig) SetSubmitURI(uri string) error {
-	u, err := url.Parse(uri)
+
+	scheme, err := checkURI(uri)
 	if err != nil {
-		return fmt.Errorf("malformed URI: %w", err)
+		return err
 	}
-	if !u.IsAbs() {
-		return errors.New("uri is not absolute")
-	}
-	cfg.UseTLS = u.Scheme == "https"
+
+	cfg.UseTLS = scheme == HTTPS
 	cfg.SubmitURI = uri
 	return nil
 }
@@ -69,24 +48,6 @@ func (cfg *SubmitConfig) SetSubmitURI(uri string) error {
 // SetDeleteSession instruct to DELETE the session object after it is complete
 func (cfg *SubmitConfig) SetDeleteSession(session bool) {
 	cfg.DeleteSession = session
-}
-
-// SetAuth sets the IAuthenticator that will be used
-func (cfg *SubmitConfig) SetAuth(a auth.IAuthenticator) {
-	cfg.Auth = a
-	if cfg.Client != nil {
-		cfg.Client.Auth = cfg.Auth
-	}
-}
-
-// SetIsInsecure sets the IsInsecure parameter using the supplied val
-func (cfg *SubmitConfig) SetIsInsecure(val bool) {
-	cfg.IsInsecure = val
-}
-
-// SetCerts sets the CACerts parameter to the specified paths
-func (cfg *SubmitConfig) SetCerts(paths []string) {
-	cfg.CACerts = paths
 }
 
 // Run implements the endorsement submission API.  If the session does not
@@ -233,26 +194,4 @@ func sessionFromResponse(res *http.Response) (*SubmitSession, error) {
 	}
 
 	return &j, nil
-}
-
-func (cfg *SubmitConfig) initClient() error {
-	if cfg.Client != nil {
-		return nil // client already initialized
-	}
-
-	if !cfg.UseTLS {
-		cfg.Client = common.NewClient(cfg.Auth)
-		return nil
-	}
-
-	if cfg.IsInsecure {
-		cfg.Client = common.NewInsecureTLSClient(cfg.Auth)
-		return nil
-	}
-
-	var err error
-
-	cfg.Client, err = common.NewTLSClient(cfg.Auth, cfg.CACerts)
-
-	return err
 }
