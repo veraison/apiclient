@@ -145,7 +145,8 @@ func (c Client) newRequest(method, uri string, body io.Reader) (*http.Request, e
 func (c Client) send(req *http.Request) (*http.Response, error) {
 	hc := &c.HTTPClient
 
-	res, err := hc.Do(req)
+	// False positive for G704 (request is provided as an argument intentionally)
+	res, err := hc.Do(req) // nolint: gosec
 	if err != nil {
 		return nil, err
 	}
