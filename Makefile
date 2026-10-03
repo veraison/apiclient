@@ -4,10 +4,9 @@ SHELL := /bin/bash
 
 GO111MODULE := on
 
-GOPKG := github.com/veraison/apiclient/verification
-GOPKG += github.com/veraison/apiclient/provisioning
-GOPKG += github.com/veraison/apiclient/management
-GOPKG += github.com/veraison/apiclient/coserv
+# Discover all sub-packages but exclude them from linting if they have no tests
+GOPKG := $(shell go list ./...)
+GOPKG_COVER := $(shell go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./...)
 
 GOLINT ?= golangci-lint
 
@@ -20,7 +19,7 @@ ifeq ($(MAKECMDGOALS),test)
 GOTEST_ARGS ?= -v -race $(GOPKG)
 else
   ifeq ($(MAKECMDGOALS),test-cover)
-  GOTEST_ARGS ?= -short -cover $(GOPKG)
+  GOTEST_ARGS ?= -short -cover $(GOPKG_COVER)
   endif
 endif
 
@@ -46,7 +45,7 @@ licenses: ; @./scripts/licenses.sh
 help:
 	@echo "Available targets:"
 	@echo "  * test:       run unit tests for $(GOPKG)"
-	@echo "  * test-cover: run unit tests and measure coverage for $(GOPKG)"
+	@echo "  * test-cover: run unit tests and measure coverage for $(GOPKG_COVER)"
 	@echo "  * lint:       lint sources using .golangci.yml"
 	@echo "  * presubmit:  check you are ready to push your local branch to remote"
 	@echo "  * help:       print this menu"
