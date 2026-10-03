@@ -1,6 +1,6 @@
 module github.com/veraison/apiclient
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/bartventer/httpcache v0.13.0
