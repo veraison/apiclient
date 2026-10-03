@@ -8,11 +8,11 @@ import (
 )
 
 type ProblemError struct {
-	problems.DefaultProblem
+	problems.Problem
 }
 
 func (o *ProblemError) Error() string {
-	return fmt.Sprintf("%d %s: %s", o.ProblemStatus(), o.ProblemTitle(), o.Detail)
+	return fmt.Sprintf("%d %s: %s", o.Status, o.Title, o.Detail)
 }
 
 func CheckResponse(res *http.Response, expected ...int) error {
@@ -25,7 +25,7 @@ func CheckResponse(res *http.Response, expected ...int) error {
 	if res.Header.Get("Content-Type") == problems.ProblemMediaType {
 		var prob ProblemError
 
-		if err := DecodeJSONBody(res, &prob.DefaultProblem); err != nil {
+		if err := DecodeJSONBody(res, &prob.Problem); err != nil {
 			return fmt.Errorf(
 				"could not decode problem response (status %d): %w",
 				res.StatusCode,
