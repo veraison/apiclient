@@ -4,33 +4,26 @@ SHELL := /bin/bash
 
 GO111MODULE := on
 
-GOPKG := github.com/veraison/apiclient/verification
-GOPKG += github.com/veraison/apiclient/provisioning
-GOPKG += github.com/veraison/apiclient/management
-GOPKG += github.com/veraison/apiclient/coserv
+# Discover all sub-packages but exclude them from linting if they have no tests
+GOPKG := $(shell go list ./...)
+GOPKG_COVER := $(shell go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./...)
 
 GOLINT ?= golangci-lint
 
-ifeq ($(MAKECMDGOALS),lint)
-GOLINT_ARGS ?= run --timeout=3m
-else
-  ifeq ($(MAKECMDGOALS),lint-extra)
-  GOLINT_ARGS ?= run --timeout=3m --issues-exit-code=0 -E dupl -E gocritic -E gosimple -E lll -E prealloc
-  endif
-endif
+GOLINT_ARGS ?= run
 
-.PHONY: lint lint-extra
-lint lint-extra: ; $(GOLINT) $(GOLINT_ARGS)
+.PHONY: lint
+lint: ; $(GOLINT) $(GOLINT_ARGS)
 
 ifeq ($(MAKECMDGOALS),test)
 GOTEST_ARGS ?= -v -race $(GOPKG)
 else
   ifeq ($(MAKECMDGOALS),test-cover)
-  GOTEST_ARGS ?= -short -cover $(GOPKG)
+  GOTEST_ARGS ?= -short -cover $(GOPKG_COVER)
   endif
 endif
 
-COVER_THRESHOLD := $(shell grep '^name: cover' .github/workflows/ci-go-cover.yml | cut -c13-)
+COVER_THRESHOLD := $(shell sed -n "s/^ *min-coverage: '\(.*\)'/≥\1%/p" .github/workflows/ci-go-cover.yml)
 
 .PHONY: test test-cover
 test test-cover: ; go test $(GOTEST_ARGS)
@@ -43,7 +36,7 @@ presubmit:
 	@echo
 	@echo ">>> Fix any lint error"
 	@echo
-	$(MAKE) lint-extra
+	$(MAKE) lint
 
 .PHONY: licenses
 licenses: ; @./scripts/licenses.sh
@@ -52,9 +45,8 @@ licenses: ; @./scripts/licenses.sh
 help:
 	@echo "Available targets:"
 	@echo "  * test:       run unit tests for $(GOPKG)"
-	@echo "  * test-cover: run unit tests and measure coverage for $(GOPKG)"
-	@echo "  * lint:       lint sources using default configuration"
-	@echo "  * lint-extra: lint sources using default configuration and some extra checkers"
+	@echo "  * test-cover: run unit tests and measure coverage for $(GOPKG_COVER)"
+	@echo "  * lint:       lint sources using .golangci.yml"
 	@echo "  * presubmit:  check you are ready to push your local branch to remote"
 	@echo "  * help:       print this menu"
 	@echo "  * licenses:   check licenses of dependent packages"

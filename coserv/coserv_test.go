@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/veraison/apiclient/auth"
@@ -77,7 +77,7 @@ func getSignerAndVerifierFromJWK(jwkJSON string) (cose.Signer, cose.Verifier, er
 		return nil, nil, kerr
 	}
 	var ecdsaPriv ecdsa.PrivateKey
-	if err := key.Raw(&ecdsaPriv); err != nil {
+	if err := jwk.Export(key, &ecdsaPriv); err != nil {
 		return nil, nil, err
 	}
 	signer, err := cose.NewSigner(cose.AlgorithmES256, &ecdsaPriv)
